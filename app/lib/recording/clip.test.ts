@@ -1,4 +1,4 @@
-import { frameAt, frameDuration, timelineThumbnails, type Clip, type ClipFrame } from './clip';
+import { frameAt, frameDuration, type Clip, type ClipFrame } from './clip';
 
 const frames: ClipFrame[] = [0, 33, 66, 100].map((time) => ({ time, pose: [] }));
 
@@ -9,7 +9,7 @@ function clip(overrides: Partial<Clip>): Clip {
     startedAt: new Date(0),
     durationMs: 1000,
     frames: [],
-    thumbnails: [],
+    thumbnail: null,
     ...overrides,
   };
 }
@@ -44,17 +44,5 @@ describe('frameDuration', () => {
 
   it('falls back to 30 fps without enough frames', () => {
     expect(frameDuration(clip({ frames: [] }))).toBeCloseTo(1000 / 30);
-  });
-});
-
-describe('timelineThumbnails', () => {
-  it('picks one thumbnail per slot, spread over the clip', () => {
-    const thumbnails = Array.from({ length: 50 }, (_, i) => ({ time: i * 20, url: `t${i}` }));
-    const picked = timelineThumbnails(clip({ durationMs: 1000, thumbnails }), 5);
-    expect(picked.map((t) => t.time)).toEqual([100, 300, 500, 700, 900]);
-  });
-
-  it('returns nothing for a clip without thumbnails', () => {
-    expect(timelineThumbnails(clip({}), 5)).toEqual([]);
   });
 });

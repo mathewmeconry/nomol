@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import ClipPlayer from '~/components/ClipPlayer';
+import ClipStrip from '~/components/ClipStrip';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useWakeLock from '~/hooks/use-wake-lock';
@@ -8,7 +9,7 @@ import type { Pose } from '~/lib/detection/pose';
 import { initialSession, step, type SessionState } from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawZone, prepareCanvas } from '~/lib/draw';
-import type { Clip, ClipFrame, Thumbnail } from '~/lib/recording/clip';
+import type { Clip, ClipFrame } from '~/lib/recording/clip';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
@@ -18,8 +19,11 @@ import { DEFAULT_ZONE, loadZone, saveZone } from '~/lib/zone-storage';
 const ARMED_TIMEOUT_MS = 20_000;
 /** Older clips are dropped to keep the tablet's memory in check. */
 const MAX_CLIPS = 8;
-/** Timeline thumbnails are grabbed this often while recording. */
-const THUMBNAIL_EVERY_MS = 200;
+/**
+ * The clip's thumbnail should come from the middle of the recording, whose length isn't known
+ * in advance, so candidate stills are grabbed this often and one is picked at the end.
+ */
+const STILL_EVERY_MS = 500;
 
 type Status = 'idle' | 'sign' | 'armed' | 'recording';
 
@@ -42,7 +46,7 @@ type ActiveRecording = {
   startedAt: number;
   startedDate: Date;
   frames: ClipFrame[];
-  thumbnails: Thumbnail[];
+  stills: { time: number; url: string }[];
 };
 
 const floating =
@@ -74,8 +78,7 @@ export default function Tablet() {
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [soundReady, setSoundReady] = useState(false);
 
-  const currentIndex = clips.findIndex((clip) => clip.id === currentId);
-  const current = clips[currentIndex] ?? null;
+  const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
 
   useEffect(() => {
@@ -122,13 +125,21 @@ export default function Tablet() {
     if (!active) return;
     activeRef.current = null;
     const blob = await active.recording.stop();
+    const durationMs = time - active.startedAt;
+    const middle = active.stills.reduce<(typeof active.stills)[number] | null>(
+      (best, still) =>
+        !best || Math.abs(still.time - durationMs / 2) < Math.abs(best.time - durationMs / 2)
+          ? still
+          : best,
+      null,
+    );
     const clip: Clip = {
       id: crypto.randomUUID(),
       url: URL.createObjectURL(blob),
       startedAt: active.startedDate,
-      durationMs: time - active.startedAt,
+      durationMs,
       frames: active.frames,
-      thumbnails: active.thumbnails,
+      thumbnail: middle?.url ?? null,
     };
     setClips((previous) => {
       previous.slice(MAX_CLIPS - 1).forEach((old) => URL.revokeObjectURL(old.url));
@@ -138,12 +149,12 @@ export default function Tablet() {
     setView('replay');
   }
 
-  function recordThumbnail(active: ActiveRecording, time: number) {
+  function recordStill(active: ActiveRecording, time: number) {
     const video = videoRef.current;
-    const last = active.thumbnails[active.thumbnails.length - 1];
-    if (!video || (last && time - active.startedAt - last.time < THUMBNAIL_EVERY_MS)) return;
+    const last = active.stills[active.stills.length - 1];
+    if (!video || (last && time - active.startedAt - last.time < STILL_EVERY_MS)) return;
     thumbnailCanvasRef.current ??= document.createElement('canvas');
-    active.thumbnails.push({
+    active.stills.push({
       time: time - active.startedAt,
       url: captureThumbnail(video, thumbnailCanvasRef.current),
     });
@@ -165,7 +176,7 @@ export default function Tablet() {
         startedAt: time,
         startedDate: new Date(),
         frames: [],
-        thumbnails: [],
+        stills: [],
       };
       playStartSound();
       setArmedAt(null);
@@ -173,7 +184,7 @@ export default function Tablet() {
     const active = activeRef.current;
     if (active) {
       if (result.target) active.frames.push({ time: time - active.startedAt, pose: result.target });
-      recordThumbnail(active, time);
+      recordStill(active, time);
     }
     if (result.event?.type === 'stop') void finishRecording(time);
 
@@ -238,9 +249,16 @@ export default function Tablet() {
             ? 'Erkennung lädt …'
             : null;
 
-  function showClip(clip: Clip | undefined) {
-    if (clip) setCurrentId(clip.id);
-  }
+  const clipStrip = (
+    <ClipStrip
+      clips={clips}
+      currentId={showReplay ? currentId : null}
+      onSelect={(clip) => {
+        setCurrentId(clip.id);
+        setView('replay');
+      }}
+    />
+  );
 
   return (
     <div className="relative h-dvh overflow-hidden bg-black text-slate-100">
@@ -249,8 +267,7 @@ export default function Tablet() {
           key={current.id}
           clip={current}
           aspectRatio={aspectRatio}
-          onOlder={clips[currentIndex + 1] ? () => showClip(clips[currentIndex + 1]) : null}
-          onNewer={currentIndex > 0 ? () => showClip(clips[currentIndex - 1]) : null}
+          clipStrip={clipStrip}
           onLive={() => setView('live')}
         />
       )}
@@ -346,7 +363,11 @@ export default function Tablet() {
       </div>
 
       {!showReplay && !editingZone && status === 'idle' && !loading && (
-        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center backdrop-blur">
+        <div
+          className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center backdrop-blur ${
+            clips.length > 0 ? 'bottom-28' : 'bottom-6'
+          }`}
+        >
           <p className="text-lg font-semibold">Aufnehmen? Arme über dem Kopf kreuzen</p>
           <p className="text-sm text-slate-400">
             in der Startzone · zur Kamera schauen · 1 Sekunde halten
@@ -354,14 +375,8 @@ export default function Tablet() {
         </div>
       )}
 
-      {!showReplay && !editingZone && current && (
-        <button
-          type="button"
-          onClick={() => setView('replay')}
-          className={`${floating} absolute right-4 bottom-6 z-20 text-slate-200`}
-        >
-          Letzter Clip ›
-        </button>
+      {!showReplay && !editingZone && clips.length > 0 && (
+        <div className="absolute inset-x-4 bottom-4 z-20">{clipStrip}</div>
       )}
 
       {loading && (

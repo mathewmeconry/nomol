@@ -11,31 +11,3 @@ body {
   @apply bg-black;
   color-scheme: dark;
 }
-
-/* Timeline: thumbnails show through a transparent track; the thumb is a playhead line. */
-.timeline-range {
-  appearance: none;
-  background: transparent;
-}
-.timeline-range::-webkit-slider-runnable-track {
-  height: 100%;
-  background: transparent;
-}
-.timeline-range::-webkit-slider-thumb {
-  appearance: none;
-  width: 4px;
-  height: 3.5rem;
-  border-radius: 2px;
-  background: white;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
-}
-.timeline-range::-moz-range-track {
-  background: transparent;
-}
-.timeline-range::-moz-range-thumb {
-  width: 4px;
-  height: 3.5rem;
-  border: 0;
-  border-radius: 2px;
-  background: white;
-}

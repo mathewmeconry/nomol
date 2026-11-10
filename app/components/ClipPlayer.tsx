@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { drawSkeleton, prepareCanvas } from '~/lib/draw';
-import { frameAt, frameDuration, timelineThumbnails, type Clip } from '~/lib/recording/clip';
+import { frameAt, frameDuration, type Clip } from '~/lib/recording/clip';
 
 const SPEEDS = [
   { value: 0.25, label: '¼×' },
@@ -15,8 +15,6 @@ const STEPS = [
   { frames: 5, label: '5 ››', name: '5 Bilder vor' },
 ];
 
-const TIMELINE_SLOTS = 12;
-
 function formatTime(ms: number) {
   const seconds = Math.max(0, ms) / 1000;
   const minutes = Math.floor(seconds / 60);
@@ -26,9 +24,8 @@ function formatTime(ms: number) {
 type Props = {
   clip: Clip;
   aspectRatio: number;
-  /** Null when there is no older/newer clip. */
-  onOlder: (() => void) | null;
-  onNewer: (() => void) | null;
+  /** The list of recent clips, shown above the controls. */
+  clipStrip: ReactNode;
   onLive: () => void;
 };
 
@@ -39,14 +36,13 @@ const button =
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
  * Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({ clip, aspectRatio, onOlder, onNewer, onLive }: Props) {
+export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [skeleton, setSkeleton] = useState(true);
   const [timeMs, setTimeMs] = useState(0);
-  const thumbnails = timelineThumbnails(clip, TIMELINE_SLOTS);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
@@ -116,28 +112,17 @@ export default function ClipPlayer({ clip, aspectRatio, onOlder, onNewer, onLive
       </div>
 
       <div className="absolute inset-x-0 bottom-0 space-y-2 bg-linear-to-t from-black/90 via-black/60 to-transparent px-4 pt-12 pb-3">
-        <div className="relative h-14 overflow-hidden rounded-lg bg-white/5">
-          <div className="absolute inset-0 flex">
-            {thumbnails.map((thumbnail) => (
-              <img
-                key={thumbnail.time}
-                src={thumbnail.url}
-                alt=""
-                className="h-full min-w-0 flex-1 object-cover opacity-80"
-              />
-            ))}
-          </div>
-          <input
-            type="range"
-            aria-label="Zeitleiste"
-            min={0}
-            max={clip.durationMs}
-            step="any"
-            value={Math.min(timeMs, clip.durationMs)}
-            onChange={(event) => seek(Number(event.target.value))}
-            className="timeline-range absolute inset-0 h-full w-full cursor-pointer"
-          />
-        </div>
+        {clipStrip}
+        <input
+          type="range"
+          aria-label="Zeitleiste"
+          min={0}
+          max={clip.durationMs}
+          step="any"
+          value={Math.min(timeMs, clip.durationMs)}
+          onChange={(event) => seek(Number(event.target.value))}
+          className="h-8 w-full cursor-pointer accent-sky-400"
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -186,30 +171,6 @@ export default function ClipPlayer({ clip, aspectRatio, onOlder, onNewer, onLive
           </span>
 
           <span className="flex-1" />
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Älterer Clip"
-              disabled={!onOlder}
-              onClick={() => onOlder?.()}
-              className={button}
-            >
-              ‹
-            </button>
-            <span className="px-1 font-mono text-sm text-slate-300">
-              {clip.startedAt.toLocaleTimeString('de-CH')}
-            </span>
-            <button
-              type="button"
-              aria-label="Neuerer Clip"
-              disabled={!onNewer}
-              onClick={() => onNewer?.()}
-              className={button}
-            >
-              ›
-            </button>
-          </div>
           <button type="button" onClick={onLive} className={`${button} text-emerald-300`}>
             Live
           </button>

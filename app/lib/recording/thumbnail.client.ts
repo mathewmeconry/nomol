@@ -1,4 +1,4 @@
-/** Wide enough to recognize a pose in the timeline, small enough to keep many in memory. */
+/** Wide enough to recognize a pose in the clip list, small enough to keep many in memory. */
 const WIDTH = 192;
 
 /** Grabs the current camera frame as a small JPEG data URL. */
