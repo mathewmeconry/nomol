@@ -16,7 +16,17 @@ pnpm install
 pnpm dev
 ```
 
-The app runs on `http://localhost:5173`.
+The app runs on `http://localhost:5173` (`pnpm dev --port 5180` if that port is taken).
+
+Camera access needs a secure context: `localhost` works, a tablet on the network needs HTTPS.
+Pose detection loads its WASM and model from the internet on startup.
+
+## Setting up a tablet
+
+1. Mount the tablet so the camera sees the whole apparatus, including the floor in front of it.
+2. Open the app and allow camera access. Install it to the home screen for full-screen mode.
+3. Tap **Startzone** and drag the area where gymnasts stand before they start. Its bottom edge
+   must sit on the floor: recordings stop when the gymnast stands still on that floor line.
 
 ## Scripts
 

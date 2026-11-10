@@ -25,10 +25,22 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - React Router 8 (framework mode, SSR), React 19, Vite, TypeScript strict
 - Tailwind CSS v4
 - zod for validation
+- Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
+  people per frame. WASM and model load from CDNs for now (`pose-detector.client.ts`).
+- Recording: MediaRecorder on the camera stream; clips stay in memory on the tablet (last 8).
 - vitest + Testing Library (jsdom)
 - pnpm only, Node >= 24
 - Database (when needed): Prisma with Postgres. Not added yet; don't add it without a feature
   that needs persistence.
+
+## Code map
+
+- `app/lib/detection/`: pure, tested logic. `session.ts` decides when recordings start and stop
+  (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and floor line.
+- `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop and drives
+  recording and replay.
+- `app/components/ClipPlayer.tsx`, `ZoneEditor.tsx`: replay and coach zone drawing.
+- `app/tests/poses.ts`: builds synthetic poses for tests.
 
 ## Conventions
 
