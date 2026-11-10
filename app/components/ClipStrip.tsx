@@ -17,7 +17,7 @@ export default function ClipStrip({ clips, currentId, onSelect }: Props) {
           type="button"
           aria-current={clip.id === currentId}
           onClick={() => onSelect(clip)}
-          className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-lg border-2 border-white/20 bg-slate-800 aria-current:border-sky-400"
+          className="relative aspect-video w-20 shrink-0 sm:w-28 overflow-hidden rounded-lg border-2 border-white/20 bg-slate-800 aria-current:border-sky-400"
         >
           {clip.thumbnail && (
             <img src={clip.thumbnail} alt="" className="h-full w-full object-cover" />

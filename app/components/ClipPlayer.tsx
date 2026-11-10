@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, type Clip } from '~/lib/recording/clip';
+import { exportClip } from '~/lib/recording/export.client';
 
+/** One button cycles through these, to save space on phones. */
 const SPEEDS = [
-  { value: 0.25, label: '¼×' },
-  { value: 0.5, label: '½×' },
   { value: 1, label: '1×' },
+  { value: 0.5, label: '½×' },
+  { value: 0.25, label: '¼×' },
 ];
 
 const STEPS = [
-  { frames: -5, label: '‹‹ 5', name: '5 Bilder zurück' },
-  { frames: -1, label: '‹ 1', name: '1 Bild zurück' },
-  { frames: 1, label: '1 ›', name: '1 Bild vor' },
-  { frames: 5, label: '5 ››', name: '5 Bilder vor' },
+  { frames: -5, label: '«', name: '5 Bilder zurück' },
+  { frames: -1, label: '‹', name: '1 Bild zurück' },
+  { frames: 1, label: '›', name: '1 Bild vor' },
+  { frames: 5, label: '»', name: '5 Bilder vor' },
 ];
+
+const CONTROLS_HIDE_MS = 3000;
 
 function formatTime(ms: number) {
   const seconds = Math.max(0, ms) / 1000;
@@ -30,7 +34,7 @@ type Props = {
 };
 
 const button =
-  'h-10 rounded-lg bg-white/10 px-3 text-sm font-semibold backdrop-blur hover:bg-white/20 disabled:opacity-30';
+  'h-9 min-w-9 rounded-lg bg-white/10 px-2.5 text-sm font-semibold backdrop-blur hover:bg-white/20 disabled:opacity-30';
 
 /**
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
@@ -44,10 +48,21 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
   const [speed, setSpeed] = useState(1);
   const [skeleton, setSkeleton] = useState(true);
   const [timeMs, setTimeMs] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [lastTouch, setLastTouch] = useState(0);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
   }, [speed]);
+
+  // On phones the controls cover much of the picture, so they fade out during playback.
+  useEffect(() => {
+    if (!playing || !controlsVisible) return;
+    const timer = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [playing, controlsVisible, lastTouch]);
 
   useEffect(() => {
     let frame = 0;
@@ -87,7 +102,13 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
   }
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black">
+    <div
+      className="absolute inset-0 flex items-center justify-center bg-black"
+      onPointerDown={() => {
+        setControlsVisible(true);
+        setLastTouch(Date.now());
+      }}
+    >
       <div
         className="relative"
         style={{ aspectRatio, width: `min(100%, calc(100dvh * ${aspectRatio}))` }}
@@ -106,7 +127,11 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 space-y-2 bg-linear-to-t from-black/90 via-black/60 to-transparent px-4 pt-12 pb-3">
+      <div
+        className={`absolute inset-x-0 bottom-0 space-y-1.5 bg-linear-to-t from-black/90 via-black/60 to-transparent px-3 pt-8 pb-2 transition-opacity ${
+          controlsVisible ? '' : 'pointer-events-none opacity-0'
+        }`}
+      >
         {clipStrip}
         <input
           type="range"
@@ -116,16 +141,17 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
           step="any"
           value={Math.min(timeMs, clip.durationMs)}
           onChange={(event) => seek(Number(event.target.value))}
-          className="h-8 w-full cursor-pointer accent-sky-400"
+          className="h-6 w-full cursor-pointer accent-sky-400"
         />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
+            aria-label={playing ? 'Pause' : 'Abspielen'}
             onClick={togglePlay}
-            className="h-10 min-w-24 rounded-lg bg-white px-4 font-semibold text-slate-950"
+            className="h-9 w-12 rounded-lg bg-white font-semibold text-slate-950"
           >
-            {playing ? 'Pause' : 'Abspielen'}
+            {playing ? '❚❚' : '▶'}
           </button>
           <div className="flex gap-1" role="group" aria-label="Bild für Bild">
             {STEPS.map((step) => (
@@ -134,25 +160,24 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
                 type="button"
                 aria-label={step.name}
                 onClick={() => stepFrames(step.frames)}
-                className={`${button} font-mono`}
+                className={button}
               >
                 {step.label}
               </button>
             ))}
           </div>
-          <div className="flex gap-1" role="group" aria-label="Geschwindigkeit">
-            {SPEEDS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={speed === option.value}
-                onClick={() => setSpeed(option.value)}
-                className={`${button} font-mono aria-pressed:bg-white aria-pressed:text-slate-950`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            aria-label="Geschwindigkeit"
+            onClick={() =>
+              setSpeed(
+                SPEEDS[(SPEEDS.findIndex((s) => s.value === speed) + 1) % SPEEDS.length].value,
+              )
+            }
+            className={`${button} w-12 font-mono`}
+          >
+            {SPEEDS.find((s) => s.value === speed)?.label}
+          </button>
           <button
             type="button"
             aria-pressed={skeleton}
@@ -162,7 +187,7 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
             Skelett
           </button>
           {skeleton && (
-            <span className="flex gap-3 text-xs text-slate-300">
+            <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
               {(
                 [
                   ['Links', LIMB_COLORS.leftArm, LIMB_COLORS.leftLeg],
@@ -179,11 +204,24 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
               ))}
             </span>
           )}
-          <span className="font-mono text-sm text-slate-300 tabular-nums">
+          <span className="font-mono text-xs text-slate-300 tabular-nums">
             {formatTime(timeMs)} / {formatTime(clip.durationMs)}
           </span>
 
           <span className="flex-1" />
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              exportClip(clip)
+                .catch((_error: unknown) => setExportFailed(true))
+                .finally(() => setExporting(false));
+            }}
+            className={button}
+          >
+            {exportFailed ? 'Export fehlgeschlagen' : exporting ? 'Export …' : 'Export'}
+          </button>
           <button type="button" onClick={onLive} className={`${button} text-emerald-300`}>
             Live
           </button>

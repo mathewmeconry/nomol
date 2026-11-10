@@ -14,6 +14,8 @@ function clip(overrides: Partial<Clip>): Clip {
     durationMs: 1000,
     frames: [],
     thumbnail: null,
+    zone: { left: 0, top: 0, right: 1, bottom: 1 },
+    aspectRatio: 16 / 9,
     ...overrides,
   };
 }

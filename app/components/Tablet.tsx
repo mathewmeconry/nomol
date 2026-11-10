@@ -47,10 +47,12 @@ type ActiveRecording = {
   startedDate: Date;
   frames: ClipFrame[];
   stills: { time: number; url: string }[];
+  zone: Zone;
+  aspectRatio: number;
 };
 
 const floating =
-  'rounded-full bg-black/60 px-4 py-2 text-sm font-semibold backdrop-blur disabled:opacity-40';
+  'rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold backdrop-blur disabled:opacity-40 sm:px-4 sm:py-2 sm:text-sm';
 
 export default function Tablet() {
   const camera = useCamera();
@@ -140,6 +142,8 @@ export default function Tablet() {
       durationMs,
       frames: active.frames,
       thumbnail: middle?.url ?? null,
+      zone: active.zone,
+      aspectRatio: active.aspectRatio,
     };
     setClips((previous) => {
       previous.slice(MAX_CLIPS - 1).forEach((old) => URL.revokeObjectURL(old.url));
@@ -184,6 +188,8 @@ export default function Tablet() {
         startedDate: new Date(),
         frames: [],
         stills: [],
+        zone,
+        aspectRatio,
       };
       playStartSound();
       setArmedAt(null);
@@ -285,7 +291,7 @@ export default function Tablet() {
       <div
         className={
           showReplay
-            ? 'absolute top-16 right-4 z-10 w-1/4 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl'
+            ? 'absolute top-24 right-3 z-10 w-1/3 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl sm:top-16 sm:w-1/4'
             : 'absolute inset-0 flex items-center justify-center'
         }
       >
@@ -337,39 +343,42 @@ export default function Tablet() {
         </div>
       </div>
 
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-        <span className={`${floating} inline-flex items-center gap-2 ${STATUS_STYLE[status]}`}>
-          <span aria-hidden className="size-2 rounded-full bg-current" />
-          {STATUS_TEXT[status]}
-        </span>
-        {!soundReady && (
-          <button type="button" className={`${floating} text-slate-300`}>
-            Ton einschalten
-          </button>
-        )}
-      </div>
+      {/* One wrapping row, so the two groups stack instead of overlapping on narrow phones. */}
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2 *:pointer-events-auto">
+        <div className="flex items-center gap-2">
+          <span className={`${floating} inline-flex items-center gap-2 ${STATUS_STYLE[status]}`}>
+            <span aria-hidden className="size-2 rounded-full bg-current" />
+            {STATUS_TEXT[status]}
+          </span>
+          {!soundReady && (
+            <button type="button" className={`${floating} text-slate-300`}>
+              Ton einschalten
+            </button>
+          )}
+        </div>
 
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          aria-pressed={editingZone}
-          disabled={status === 'recording'}
-          onClick={() => {
-            setEditingZone(!editingZone);
-            setView('live');
-          }}
-          className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
-        >
-          Startzone
-        </button>
-        <button
-          type="button"
-          disabled={status === 'recording' || !detector || editingZone}
-          onClick={() => setArmedAt(armedAt === null ? Date.now() : null)}
-          className={`${floating} ${armedAt === null ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
-        >
-          {armedAt === null ? '● Aufnahme starten' : 'Abbrechen'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={editingZone}
+            disabled={status === 'recording'}
+            onClick={() => {
+              setEditingZone(!editingZone);
+              setView('live');
+            }}
+            className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
+          >
+            Startzone
+          </button>
+          <button
+            type="button"
+            disabled={status === 'recording' || !detector || editingZone}
+            onClick={() => setArmedAt(armedAt === null ? Date.now() : null)}
+            className={`${floating} ${armedAt === null ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
+          >
+            {armedAt === null ? '● Aufnahme starten' : 'Abbrechen'}
+          </button>
+        </div>
       </div>
 
       {!showReplay && !editingZone && status === 'idle' && !loading && (

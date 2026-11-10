@@ -2,6 +2,14 @@
 /node_modules/
 coverage/
 
+# Recordings and exported test data contain people; never commit them.
+*.mp4
+*.webm
+*.mov
+*.mjpeg
+*.y4m
+*.nomol.json
+
 # Env
 .env*
 !.env.example

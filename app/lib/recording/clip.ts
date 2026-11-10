@@ -1,4 +1,5 @@
 import type { Pose } from '~/lib/detection/pose';
+import type { Zone } from '~/lib/detection/zone';
 
 /** Body points of the recorded person at a time (ms since the recording started). */
 export type ClipFrame = { time: number; pose: Pose };
@@ -13,6 +14,9 @@ export type Clip = {
   frames: ClipFrame[];
   /** Still from the middle of the recording, as a data URL, for the clip list. */
   thumbnail: string | null;
+  /** Start zone and camera aspect ratio at recording time, so exports can be replayed. */
+  zone: Zone;
+  aspectRatio: number;
 };
 
 /** Fallback when a clip has too few frames to measure the camera's frame rate. */
