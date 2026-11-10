@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import ClipPlayer, { formatTime } from '~/components/ClipPlayer';
+import ClipPlayer from '~/components/ClipPlayer';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useWakeLock from '~/hooks/use-wake-lock';
@@ -8,14 +8,18 @@ import type { Pose } from '~/lib/detection/pose';
 import { initialSession, step, type SessionState } from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawZone, prepareCanvas } from '~/lib/draw';
-import type { Clip, ClipFrame } from '~/lib/recording/clip';
+import type { Clip, ClipFrame, Thumbnail } from '~/lib/recording/clip';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
+import { captureThumbnail } from '~/lib/recording/thumbnail.client';
+import { playStartSound, unlockSound } from '~/lib/sound.client';
 import { DEFAULT_ZONE, loadZone, saveZone } from '~/lib/zone-storage';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
 /** Older clips are dropped to keep the tablet's memory in check. */
 const MAX_CLIPS = 8;
+/** Timeline thumbnails are grabbed this often while recording. */
+const THUMBNAIL_EVERY_MS = 200;
 
 type Status = 'idle' | 'sign' | 'armed' | 'recording';
 
@@ -27,10 +31,10 @@ const STATUS_TEXT: Record<Status, string> = {
 };
 
 const STATUS_STYLE: Record<Status, string> = {
-  idle: 'bg-emerald-400/15 text-emerald-300',
-  sign: 'bg-amber-400/15 text-amber-300',
-  armed: 'bg-amber-400/15 text-amber-300',
-  recording: 'bg-red-500/20 text-red-300',
+  idle: 'text-emerald-300',
+  sign: 'text-amber-300',
+  armed: 'text-amber-300',
+  recording: 'text-red-300',
 };
 
 type ActiveRecording = {
@@ -38,7 +42,11 @@ type ActiveRecording = {
   startedAt: number;
   startedDate: Date;
   frames: ClipFrame[];
+  thumbnails: Thumbnail[];
 };
+
+const floating =
+  'rounded-full bg-black/60 px-4 py-2 text-sm font-semibold backdrop-blur disabled:opacity-40';
 
 export default function Tablet() {
   const camera = useCamera();
@@ -46,6 +54,7 @@ export default function Tablet() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const thumbnailCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sessionRef = useRef<SessionState>(initialSession);
   const activeRef = useRef<ActiveRecording | null>(null);
 
@@ -63,8 +72,10 @@ export default function Tablet() {
   const [view, setView] = useState<'live' | 'replay'>('live');
   const [editingZone, setEditingZone] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
+  const [soundReady, setSoundReady] = useState(false);
 
-  const current = clips.find((clip) => clip.id === currentId) ?? null;
+  const currentIndex = clips.findIndex((clip) => clip.id === currentId);
+  const current = clips[currentIndex] ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
 
   useEffect(() => {
@@ -97,6 +108,15 @@ export default function Tablet() {
     return () => clearTimeout(timer);
   }, [armedAt]);
 
+  // Sound may only start after a touch, so unlock it on the first one anywhere on the screen.
+  useEffect(() => {
+    function unlock() {
+      void unlockSound().then(setSoundReady);
+    }
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
   async function finishRecording(time: number) {
     const active = activeRef.current;
     if (!active) return;
@@ -108,6 +128,7 @@ export default function Tablet() {
       startedAt: active.startedDate,
       durationMs: time - active.startedAt,
       frames: active.frames,
+      thumbnails: active.thumbnails,
     };
     setClips((previous) => {
       previous.slice(MAX_CLIPS - 1).forEach((old) => URL.revokeObjectURL(old.url));
@@ -115,6 +136,17 @@ export default function Tablet() {
     });
     setCurrentId(clip.id);
     setView('replay');
+  }
+
+  function recordThumbnail(active: ActiveRecording, time: number) {
+    const video = videoRef.current;
+    const last = active.thumbnails[active.thumbnails.length - 1];
+    if (!video || (last && time - active.startedAt - last.time < THUMBNAIL_EVERY_MS)) return;
+    thumbnailCanvasRef.current ??= document.createElement('canvas');
+    active.thumbnails.push({
+      time: time - active.startedAt,
+      url: captureThumbnail(video, thumbnailCanvasRef.current),
+    });
   }
 
   const onFrame = useEffectEvent((time: number, poses: Pose[]) => {
@@ -133,12 +165,15 @@ export default function Tablet() {
         startedAt: time,
         startedDate: new Date(),
         frames: [],
+        thumbnails: [],
       };
+      playStartSound();
       setArmedAt(null);
     }
     const active = activeRef.current;
-    if (active && result.target) {
-      active.frames.push({ time: time - active.startedAt, pose: result.target });
+    if (active) {
+      if (result.target) active.frames.push({ time: time - active.startedAt, pose: result.target });
+      recordThumbnail(active, time);
     }
     if (result.event?.type === 'stop') void finishRecording(time);
 
@@ -203,17 +238,91 @@ export default function Tablet() {
             ? 'Erkennung lädt …'
             : null;
 
+  function showClip(clip: Clip | undefined) {
+    if (clip) setCurrentId(clip.id);
+  }
+
   return (
-    <div className="flex h-dvh flex-col bg-[#0b1017] text-slate-100">
-      <header className="flex flex-wrap items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 py-2">
-        <span className="text-xl font-bold tracking-wide">Nomol</span>
-        <span
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold ${STATUS_STYLE[status]}`}
+    <div className="relative h-dvh overflow-hidden bg-black text-slate-100">
+      {showReplay && current && (
+        <ClipPlayer
+          key={current.id}
+          clip={current}
+          aspectRatio={aspectRatio}
+          onOlder={clips[currentIndex + 1] ? () => showClip(clips[currentIndex + 1]) : null}
+          onNewer={currentIndex > 0 ? () => showClip(clips[currentIndex - 1]) : null}
+          onLive={() => setView('live')}
+        />
+      )}
+
+      <div
+        className={
+          showReplay
+            ? 'absolute top-16 right-4 z-10 w-1/4 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl'
+            : 'absolute inset-0 flex items-center justify-center'
+        }
+      >
+        <div
+          className="relative"
+          style={{
+            aspectRatio,
+            width: showReplay ? '100%' : `min(100%, calc(100dvh * ${aspectRatio}))`,
+          }}
         >
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full"
+            muted
+            playsInline
+            onLoadedMetadata={(event) => {
+              const { videoWidth, videoHeight } = event.currentTarget;
+              if (videoWidth && videoHeight) setAspectRatio(videoWidth / videoHeight);
+            }}
+          />
+          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+          {editingZone && (
+            <ZoneEditor
+              zone={zone}
+              onCancel={() => setEditingZone(false)}
+              onSave={(next) => {
+                saveZone(next);
+                setZone(next);
+                setEditingZone(false);
+              }}
+            />
+          )}
+          {showReplay && (
+            <button
+              type="button"
+              aria-label="Live-Bild gross anzeigen"
+              onClick={() => setView('live')}
+              className="absolute inset-0"
+            >
+              <span
+                className={`absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs font-semibold ${
+                  status === 'recording' ? 'text-red-300' : 'text-emerald-300'
+                }`}
+              >
+                {status === 'recording' ? '● Live · Aufnahme' : 'Live'}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+        <span className={`${floating} inline-flex items-center gap-2 ${STATUS_STYLE[status]}`}>
           <span aria-hidden className="size-2 rounded-full bg-current" />
           {STATUS_TEXT[status]}
         </span>
-        <span className="flex-1" />
+        {!soundReady && (
+          <button type="button" className={`${floating} text-slate-300`}>
+            Ton einschalten
+          </button>
+        )}
+      </div>
+
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <button
           type="button"
           aria-pressed={editingZone}
@@ -222,7 +331,7 @@ export default function Tablet() {
             setEditingZone(!editingZone);
             setView('live');
           }}
-          className="h-10 rounded-lg border border-slate-700 px-3 text-sm font-semibold text-slate-300 disabled:opacity-40 aria-pressed:border-sky-400 aria-pressed:text-sky-300"
+          className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
         >
           Startzone
         </button>
@@ -230,123 +339,36 @@ export default function Tablet() {
           type="button"
           disabled={status === 'recording' || !detector || editingZone}
           onClick={() => setArmedAt(armedAt === null ? Date.now() : null)}
-          className={`h-10 rounded-lg px-4 font-semibold disabled:opacity-40 ${
-            armedAt === null ? 'bg-red-500 text-white' : 'border border-red-400 text-red-300'
-          }`}
+          className={`${floating} ${armedAt === null ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
         >
           {armedAt === null ? '● Aufnahme starten' : 'Abbrechen'}
         </button>
-      </header>
+      </div>
 
-      <main className="relative min-h-0 flex-1">
-        {showReplay && current && (
-          <ClipPlayer key={current.id} clip={current} aspectRatio={aspectRatio} />
-        )}
-
-        <div
-          className={
-            showReplay
-              ? 'absolute right-4 bottom-24 w-1/4 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl'
-              : 'flex h-full items-center justify-center bg-black'
-          }
-        >
-          <div className="relative max-h-full w-full" style={{ aspectRatio }}>
-            <video
-              ref={videoRef}
-              className="absolute inset-0 h-full w-full"
-              muted
-              playsInline
-              onLoadedMetadata={(event) => {
-                const { videoWidth, videoHeight } = event.currentTarget;
-                if (videoWidth && videoHeight) setAspectRatio(videoWidth / videoHeight);
-              }}
-            />
-            <canvas
-              ref={overlayRef}
-              className="pointer-events-none absolute inset-0 h-full w-full"
-            />
-            {editingZone && (
-              <ZoneEditor
-                zone={zone}
-                onCancel={() => setEditingZone(false)}
-                onSave={(next) => {
-                  saveZone(next);
-                  setZone(next);
-                  setEditingZone(false);
-                }}
-              />
-            )}
-            {showReplay && (
-              <button
-                type="button"
-                aria-label="Live-Bild gross anzeigen"
-                onClick={() => setView('live')}
-                className="absolute inset-0"
-              >
-                <span
-                  className={`absolute top-2 left-2 rounded px-2 py-0.5 text-xs font-semibold ${
-                    status === 'recording'
-                      ? 'bg-black/70 text-red-300'
-                      : 'bg-black/70 text-emerald-300'
-                  }`}
-                >
-                  {status === 'recording' ? '● Live · Aufnahme' : 'Live · bereit'}
-                </span>
-              </button>
-            )}
-          </div>
+      {!showReplay && !editingZone && status === 'idle' && !loading && (
+        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center backdrop-blur">
+          <p className="text-lg font-semibold">Aufnehmen? Arme über dem Kopf kreuzen</p>
+          <p className="text-sm text-slate-400">
+            in der Startzone · zur Kamera schauen · 1 Sekunde halten
+          </p>
         </div>
+      )}
 
-        {!showReplay && !editingZone && status === 'idle' && !loading && (
-          <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-xl border border-white/10 bg-black/80 px-5 py-3 text-center">
-            <p className="text-lg font-semibold">Aufnehmen? Arme über dem Kopf kreuzen</p>
-            <p className="text-sm text-slate-400">
-              in der Startzone · zur Kamera schauen · 1 Sekunde halten · oder «Aufnahme starten»
-              tippen
-            </p>
-          </div>
-        )}
+      {!showReplay && !editingZone && current && (
+        <button
+          type="button"
+          onClick={() => setView('replay')}
+          className={`${floating} absolute right-4 bottom-6 z-20 text-slate-200`}
+        >
+          Letzter Clip ›
+        </button>
+      )}
 
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-6">
-            <p className="max-w-md text-center text-lg">{loading}</p>
-          </div>
-        )}
-      </main>
-
-      <footer className="flex items-center gap-3 overflow-x-auto border-t border-slate-800 bg-slate-950 px-4 py-3">
-        {clips.length === 0 ? (
-          <span className="text-sm text-slate-500">Aufgenommene Clips erscheinen hier.</span>
-        ) : (
-          <>
-            {view === 'live' && current && !editingZone && (
-              <button
-                type="button"
-                onClick={() => setView('replay')}
-                className="h-11 shrink-0 rounded-lg border border-slate-700 px-4 font-semibold"
-              >
-                Zurück zum Clip
-              </button>
-            )}
-            {clips.map((clip) => (
-              <button
-                key={clip.id}
-                type="button"
-                aria-current={showReplay && clip.id === currentId}
-                onClick={() => {
-                  setCurrentId(clip.id);
-                  setView('replay');
-                  setEditingZone(false);
-                }}
-                className="h-11 shrink-0 rounded-lg border-2 border-transparent bg-slate-900 px-3 font-mono text-sm text-slate-300 aria-current:border-sky-400"
-              >
-                {clip.startedAt.toLocaleTimeString('de-CH')} ·{' '}
-                {formatTime(clip.durationMs).slice(0, 4)}
-              </button>
-            ))}
-          </>
-        )}
-      </footer>
+      {loading && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-6">
+          <p className="max-w-md text-center text-lg">{loading}</p>
+        </div>
+      )}
     </div>
   );
 }

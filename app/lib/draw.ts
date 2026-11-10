@@ -1,4 +1,4 @@
-import { LM, boundingBox, type Pose } from '~/lib/detection/pose';
+import { LM, boundingBox, isVisible, type Point, type Pose } from '~/lib/detection/pose';
 import type { Zone } from '~/lib/detection/zone';
 
 const BONES: [number, number][] = [
@@ -35,21 +35,41 @@ export function prepareCanvas(canvas: HTMLCanvasElement) {
   return { ctx, width, height };
 }
 
+/** Ear – eye – nose – eye – ear: shows where the head points, also upside down. */
+const HEAD: [number, number][] = [
+  [LM.leftEar, LM.leftEye],
+  [LM.leftEye, LM.nose],
+  [LM.nose, LM.rightEye],
+  [LM.rightEye, LM.rightEar],
+];
+
 export function drawSkeleton(ctx: CanvasRenderingContext2D, pose: Pose, w: number, h: number) {
+  const neck = {
+    x: (pose[LM.leftShoulder].x + pose[LM.rightShoulder].x) / 2,
+    y: (pose[LM.leftShoulder].y + pose[LM.rightShoulder].y) / 2,
+  };
+  // In profile the far ear and eye are guesses; leave out what MediaPipe can't see.
+  const lines: [Point, Point][] = [...BONES, ...HEAD]
+    .filter(([a, b]) => isVisible(pose, a, b))
+    .map(([a, b]) => [pose[a], pose[b]]);
+  if (isVisible(pose, LM.nose, LM.leftShoulder, LM.rightShoulder)) {
+    lines.push([neck, pose[LM.nose]]);
+  }
+
   ctx.lineCap = 'round';
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(94, 230, 255, 0.95)';
-  for (const [a, b] of BONES) {
+  for (const [a, b] of lines) {
     ctx.beginPath();
-    ctx.moveTo(pose[a].x * w, pose[a].y * h);
-    ctx.lineTo(pose[b].x * w, pose[b].y * h);
+    ctx.moveTo(a.x * w, a.y * h);
+    ctx.lineTo(b.x * w, b.y * h);
     ctx.stroke();
   }
   ctx.fillStyle = '#fff';
-  for (const [a, b] of BONES) {
-    for (const i of [a, b]) {
+  for (const [a, b] of lines) {
+    for (const p of [a, b]) {
       ctx.beginPath();
-      ctx.arc(pose[i].x * w, pose[i].y * h, 3.5, 0, Math.PI * 2);
+      ctx.arc(p.x * w, p.y * h, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
