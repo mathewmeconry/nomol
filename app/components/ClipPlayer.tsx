@@ -31,6 +31,7 @@ type Props = {
   /** The list of recent clips, shown above the controls. */
   clipStrip: ReactNode;
   onLive: () => void;
+  onDelete: () => void;
 };
 
 const button =
@@ -40,7 +41,7 @@ const button =
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
  * Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Props) {
+export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDelete }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Follows the video's own play/pause events, so the button never disagrees with it.
@@ -50,6 +51,7 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
   const [timeMs, setTimeMs] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [lastTouch, setLastTouch] = useState(0);
 
@@ -221,6 +223,14 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
             className={button}
           >
             {exportFailed ? 'Export fehlgeschlagen' : exporting ? 'Export …' : 'Export'}
+          </button>
+          {/* Two taps, because the clip is gone for good. */}
+          <button
+            type="button"
+            onClick={() => (confirmingDelete ? onDelete() : setConfirmingDelete(true))}
+            className={`${button} ${confirmingDelete ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
+          >
+            {confirmingDelete ? 'Wirklich löschen?' : 'Löschen'}
           </button>
           <button type="button" onClick={onLive} className={`${button} text-emerald-300`}>
             Live

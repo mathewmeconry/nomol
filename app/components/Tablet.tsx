@@ -305,6 +305,14 @@ export default function Tablet() {
           aspectRatio={aspectRatio}
           clipStrip={clipStrip}
           onLive={() => setView('live')}
+          onDelete={() => {
+            const remaining = clips.filter((clip) => clip.id !== current.id);
+            URL.revokeObjectURL(current.url);
+            void deleteClip(current.id).catch(() => {});
+            setClips(remaining);
+            setCurrentId(remaining[0]?.id ?? null);
+            if (remaining.length === 0) setView('live');
+          }}
         />
       )}
 
