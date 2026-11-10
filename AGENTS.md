@@ -20,6 +20,7 @@ Requirements, as agreed with the owner:
   picture. Resting still on an apparatus (e.g. support on the Reck) must not stop it.
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
   floor line used for the stop rule.
+- **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
   next gymnast. Speeds ¼× / ½× / 1×, frame steps (1 and 5), skeleton overlay incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts.
