@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ['**']
+  workflow_call:
+
+jobs:
+  test:
+    name: Check and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: pnpm run format:check
+      - name: Check types
+        run: pnpm run typecheck
+      - name: Run ESLint
+        run: pnpm run lint
+      - name: Run tests
+        run: pnpm run test:ci

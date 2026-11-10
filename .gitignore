@@ -1,0 +1,15 @@
+.DS_Store
+/node_modules/
+coverage/
+
+# Env
+.env*
+!.env.example
+
+# React Router
+/.react-router/
+/build/
+
+# AI tools (skills are restored from skills-lock.json)
+.claude/worktrees/
+.claude/skills/

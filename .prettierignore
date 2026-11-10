@@ -1,0 +1,9 @@
+node_modules
+build
+pnpm-lock.yaml
+coverage
+public
+.vite
+.react-router
+.agents
+.claude
