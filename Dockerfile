@@ -1,19 +1,11 @@
-FROM node:24-alpine AS base
+FROM node:24-alpine AS build
 RUN corepack enable
 WORKDIR /app
-
-FROM base AS production-dependencies
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile --prod
-
-FROM base AS build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
 
-FROM base
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --from=production-dependencies /app/node_modules ./node_modules
-COPY --from=build /app/build ./build
-CMD ["pnpm", "run", "start"]
+# The app is static: camera, detection and recording all run in the browser.
+FROM nginx:alpine
+COPY --from=build /app/build/client /usr/share/nginx/html

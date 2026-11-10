@@ -4,6 +4,8 @@ Self-service video replay for Swiss Geräteturnen training. A tablet at the appa
 gymnast when they give the start sign in the start zone (or tap "Aufnahme starten"), follows them
 through the routine, and shows the clip right after they land. Runs as an installable web app (PWA).
 
+**Live:** https://mathewmeconry.github.io/nomol/ (deployed from `main`)
+
 ## Requirements
 
 - Node >= 24 (`nvm use`)
@@ -31,13 +33,20 @@ Pose detection loads its WASM and model from the internet on startup.
 ## Scripts
 
 - `pnpm dev`: dev server with HMR
-- `pnpm build` / `pnpm start`: production build and server
+- `pnpm build` / `pnpm preview`: static production build in `build/client`, and a server for it
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test:ci`: the checks CI runs
 - `pnpm knip`: find unused files, exports and dependencies
 
-## Docker
+## Deployment
+
+The app is a static single-page app: camera, pose detection and recording all run in the
+browser. Every push to `main` runs the checks and deploys `build/client` to GitHub Pages
+(`.github/workflows/deploy.yml`). Pages serves it under `/nomol/`, set at build time with
+`BASE_PATH=/nomol/`.
+
+Any static host works too, e.g. with Docker (nginx):
 
 ```bash
 docker build -t nomol .
-docker run -p 3000:3000 nomol
+docker run -p 8080:80 nomol
 ```

@@ -9,7 +9,7 @@
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
+    "preview": "vite preview --outDir build/client",
     "typecheck": "react-router typegen && tsc",
     "lint": "eslint --max-warnings=0",
     "lint:fix": "eslint --max-warnings=0 --fix",
@@ -23,7 +23,6 @@
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.2.2",
     "@react-router/node": "^8.5.1",
-    "@react-router/serve": "^8.5.1",
     "isbot": "^5.1.36",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

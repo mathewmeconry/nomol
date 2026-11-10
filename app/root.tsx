@@ -29,8 +29,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0b1017" />
-        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#000000" />
+        <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.webmanifest`} />
         <Meta />
         <Links />
       </head>

@@ -3,10 +3,11 @@
   "short_name": "Nomol",
   "description": "Aufnehmen, anschauen, nomol.",
   "lang": "de",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": ".",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#0b1017",
-  "theme_color": "#0b1017",
-  "icons": [{ "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }]
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [{ "src": "favicon.ico", "sizes": "48x48", "type": "image/x-icon" }]
 }

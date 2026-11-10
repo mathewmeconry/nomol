@@ -22,7 +22,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
 ## Stack
 
-- React Router 8 (framework mode, SSR), React 19, Vite, TypeScript strict
+- React Router 8 (framework mode, SPA: `ssr: false`), React 19, Vite, TypeScript strict. Built
+  as a static site and deployed to GitHub Pages under `/nomol/` (`BASE_PATH`); use
+  `import.meta.env.BASE_URL` for links to files in `public/`.
 - Tailwind CSS v4
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
@@ -47,7 +49,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - Routes are declared in `app/routes.ts` (no file-system routing).
 - Path alias `~/*` maps to `app/*`. Use `import type` for type-only imports.
 - Prefer `function` declarations over arrow-function constants. Default-export page components.
-- Server-only code uses the `*.server.ts` suffix.
+- Browser-only code (camera, MediaPipe, MediaRecorder, audio) uses the `*.client.ts` suffix.
 - Validate inputs with zod `safeParse`.
 - Comments explain why, not what.
 - Tests sit next to the code as `*.test.ts(x)`. Mock only third-party/browser APIs (camera, media),
