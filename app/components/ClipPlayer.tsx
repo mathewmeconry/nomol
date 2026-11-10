@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { drawSkeleton, prepareCanvas } from '~/lib/draw';
+import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, type Clip } from '~/lib/recording/clip';
 
 const SPEEDS = [
@@ -161,6 +161,24 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
           >
             Skelett
           </button>
+          {skeleton && (
+            <span className="flex gap-3 text-xs text-slate-300">
+              {(
+                [
+                  ['Links', LIMB_COLORS.leftArm, LIMB_COLORS.leftLeg],
+                  ['Rechts', LIMB_COLORS.rightArm, LIMB_COLORS.rightLeg],
+                ] as const
+              ).map(([side, arm, leg]) => (
+                <span key={side} className="flex items-center gap-1">
+                  {side}
+                  <span className="ml-1 h-1 w-3 rounded" style={{ background: arm }} />
+                  Arm
+                  <span className="ml-1 h-1 w-3 rounded" style={{ background: leg }} />
+                  Bein
+                </span>
+              ))}
+            </span>
+          )}
           <span className="font-mono text-sm text-slate-300 tabular-nums">
             {formatTime(timeMs)} / {formatTime(clip.durationMs)}
           </span>

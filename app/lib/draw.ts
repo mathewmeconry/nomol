@@ -1,19 +1,33 @@
 import { LM, boundingBox, isVisible, type Point, type Pose } from '~/lib/detection/pose';
 import type { Zone } from '~/lib/detection/zone';
 
-const BONES: [number, number][] = [
-  [LM.leftShoulder, LM.rightShoulder],
-  [LM.leftShoulder, LM.leftElbow],
-  [LM.leftElbow, LM.leftWrist],
-  [LM.rightShoulder, LM.rightElbow],
-  [LM.rightElbow, LM.rightWrist],
-  [LM.leftShoulder, LM.leftHip],
-  [LM.rightShoulder, LM.rightHip],
-  [LM.leftHip, LM.rightHip],
-  [LM.leftHip, LM.leftKnee],
-  [LM.leftKnee, LM.leftAnkle],
-  [LM.rightHip, LM.rightKnee],
-  [LM.rightKnee, LM.rightAnkle],
+/**
+ * Left is warm, right is cool, so sides stay apparent when the gymnast turns or flips; arms are
+ * the lighter shade of their side, legs the stronger one. Left/right is the gymnast's own side.
+ */
+export const LIMB_COLORS = {
+  leftArm: '#ffc145',
+  leftLeg: '#ff6b35',
+  rightArm: '#5ee6ff',
+  rightLeg: '#4d7cff',
+  body: '#ffffff',
+} as const;
+
+type Limb = keyof typeof LIMB_COLORS;
+
+const BONES: [number, number, Limb][] = [
+  [LM.leftShoulder, LM.rightShoulder, 'body'],
+  [LM.leftShoulder, LM.leftHip, 'body'],
+  [LM.rightShoulder, LM.rightHip, 'body'],
+  [LM.leftHip, LM.rightHip, 'body'],
+  [LM.leftShoulder, LM.leftElbow, 'leftArm'],
+  [LM.leftElbow, LM.leftWrist, 'leftArm'],
+  [LM.rightShoulder, LM.rightElbow, 'rightArm'],
+  [LM.rightElbow, LM.rightWrist, 'rightArm'],
+  [LM.leftHip, LM.leftKnee, 'leftLeg'],
+  [LM.leftKnee, LM.leftAnkle, 'leftLeg'],
+  [LM.rightHip, LM.rightKnee, 'rightLeg'],
+  [LM.rightKnee, LM.rightAnkle, 'rightLeg'],
 ];
 
 /**
@@ -36,11 +50,11 @@ export function prepareCanvas(canvas: HTMLCanvasElement) {
 }
 
 /** Ear – eye – nose – eye – ear: shows where the head points, also upside down. */
-const HEAD: [number, number][] = [
-  [LM.leftEar, LM.leftEye],
-  [LM.leftEye, LM.nose],
-  [LM.nose, LM.rightEye],
-  [LM.rightEye, LM.rightEar],
+const HEAD: [number, number, Limb][] = [
+  [LM.leftEar, LM.leftEye, 'body'],
+  [LM.leftEye, LM.nose, 'body'],
+  [LM.nose, LM.rightEye, 'body'],
+  [LM.rightEye, LM.rightEar, 'body'],
 ];
 
 export function drawSkeleton(ctx: CanvasRenderingContext2D, pose: Pose, w: number, h: number) {
@@ -49,27 +63,33 @@ export function drawSkeleton(ctx: CanvasRenderingContext2D, pose: Pose, w: numbe
     y: (pose[LM.leftShoulder].y + pose[LM.rightShoulder].y) / 2,
   };
   // In profile the far ear and eye are guesses; leave out what MediaPipe can't see.
-  const lines: [Point, Point][] = [...BONES, ...HEAD]
+  const lines: [Point, Point, string][] = [...BONES, ...HEAD]
     .filter(([a, b]) => isVisible(pose, a, b))
-    .map(([a, b]) => [pose[a], pose[b]]);
+    .map(([a, b, limb]) => [pose[a], pose[b], LIMB_COLORS[limb]]);
   if (isVisible(pose, LM.nose, LM.leftShoulder, LM.rightShoulder)) {
-    lines.push([neck, pose[LM.nose]]);
+    lines.push([neck, pose[LM.nose], LIMB_COLORS.body]);
   }
 
   ctx.lineCap = 'round';
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgba(94, 230, 255, 0.95)';
-  for (const [a, b] of lines) {
-    ctx.beginPath();
-    ctx.moveTo(a.x * w, a.y * h);
-    ctx.lineTo(b.x * w, b.y * h);
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#fff';
-  for (const [a, b] of lines) {
-    for (const p of [a, b]) {
+  // A dark outline keeps the colours readable on bright mats and walls.
+  for (const [width, outline] of [
+    [6, true],
+    [3.5, false],
+  ] as const) {
+    ctx.lineWidth = width;
+    for (const [a, b, color] of lines) {
+      ctx.strokeStyle = outline ? 'rgba(0, 0, 0, 0.55)' : color;
       ctx.beginPath();
-      ctx.arc(p.x * w, p.y * h, 3.5, 0, Math.PI * 2);
+      ctx.moveTo(a.x * w, a.y * h);
+      ctx.lineTo(b.x * w, b.y * h);
+      ctx.stroke();
+    }
+  }
+  for (const [a, b, color] of lines) {
+    for (const p of [a, b]) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
       ctx.fill();
     }
   }
