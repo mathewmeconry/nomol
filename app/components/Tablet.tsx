@@ -10,6 +10,7 @@ import { initialSession, step, type SessionState } from '~/lib/detection/session
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawZone, prepareCanvas } from '~/lib/draw';
 import type { Clip, ClipFrame } from '~/lib/recording/clip';
+import { deleteClip, loadClips, saveClip } from '~/lib/recording/clip-store.client';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
@@ -108,6 +109,20 @@ export default function Tablet() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    loadClips()
+      .then((stored) => {
+        if (cancelled) return stored.forEach((clip) => URL.revokeObjectURL(clip.url));
+        // Clips recorded while loading come first; the list stays newest-first.
+        setClips((recorded) => [...recorded, ...stored].slice(0, MAX_CLIPS));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (armedAt === null) return;
     const timer = setTimeout(() => setArmedAt(null), ARMED_TIMEOUT_MS);
     return () => clearTimeout(timer);
@@ -146,11 +161,16 @@ export default function Tablet() {
       aspectRatio: active.aspectRatio,
     };
     setClips((previous) => {
-      previous.slice(MAX_CLIPS - 1).forEach((old) => URL.revokeObjectURL(old.url));
+      for (const old of previous.slice(MAX_CLIPS - 1)) {
+        URL.revokeObjectURL(old.url);
+        void deleteClip(old.id).catch(() => {});
+      }
       return [clip, ...previous].slice(0, MAX_CLIPS);
     });
     setCurrentId(clip.id);
     setView('replay');
+    // A full or blocked storage only means the clip won't survive a reload.
+    void saveClip(clip, blob).catch(() => {});
   }
 
   function recordStill(active: ActiveRecording, time: number) {

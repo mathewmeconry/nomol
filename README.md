@@ -21,7 +21,13 @@ pnpm dev
 The app runs on `http://localhost:5173` (`pnpm dev --port 5180` if that port is taken).
 
 Camera access needs a secure context: `localhost` works, a tablet on the network needs HTTPS.
-Pose detection loads its WASM and model from the internet on startup.
+Pose detection loads its WASM and model from the internet. After one visit with internet, a
+service worker (`public/sw.js`, production builds only) keeps the app and the model available
+offline.
+
+The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
+uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.json` (body
+points per frame, start zone, aspect ratio).
 
 ## Setting up a tablet
 

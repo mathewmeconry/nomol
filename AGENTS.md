@@ -29,7 +29,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame. WASM and model load from CDNs for now (`pose-detector.client.ts`).
-- Recording: MediaRecorder on the camera stream; clips stay in memory on the tablet (last 8).
+- Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
+  (`clip-store.client.ts`) and can be exported as video + `.nomol.json` (`export.ts`).
+- Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
 - vitest + Testing Library (jsdom)
 - pnpm only, Node >= 24
 - Database (when needed): Prisma with Postgres. Not added yet; don't add it without a feature

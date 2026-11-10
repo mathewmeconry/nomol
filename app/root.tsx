@@ -7,6 +7,7 @@ import {
   ScrollRestoration,
 } from 'react-router';
 
+import { useEffect } from 'react';
 import type { Route } from './+types/root';
 import './app.css';
 
@@ -44,6 +45,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // Offline support (public/sw.js). Only in production builds: in dev it would cache stale modules.
+  useEffect(() => {
+    if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+    void navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`)
+      .then(() => navigator.serviceWorker.ready)
+      .then((registration) => {
+        const urls = [
+          location.href,
+          ...performance.getEntriesByType('resource').map((entry) => entry.name),
+        ];
+        registration.active?.postMessage({ type: 'cache', urls });
+      });
+  }, []);
+
   return <Outlet />;
 }
 
