@@ -5,18 +5,23 @@ export type CameraState =
   | { status: 'ready'; stream: MediaStream }
   | { status: 'error'; message: string };
 
-/** Back camera of the tablet, as sharp and smooth as it allows. Video only. */
-const CONSTRAINTS: MediaStreamConstraints = {
-  audio: false,
-  video: {
-    facingMode: 'environment',
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 60 },
-  },
-};
+/**
+ * The chosen camera, or the back camera by default, as sharp and smooth as it allows. Video only.
+ */
+function constraints(deviceId: string | null): MediaStreamConstraints {
+  return {
+    audio: false,
+    video: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 60 },
+    },
+  };
+}
 
-export default function useCamera(): CameraState {
+/** Opens `deviceId`, falling back to the default camera if it's gone (e.g. a saved choice). */
+export default function useCamera(deviceId: string | null): CameraState {
   const [state, setState] = useState<CameraState>({ status: 'starting' });
 
   useEffect(() => {
@@ -24,7 +29,11 @@ export default function useCamera(): CameraState {
     let cancelled = false;
 
     navigator.mediaDevices
-      .getUserMedia(CONSTRAINTS)
+      .getUserMedia(constraints(deviceId))
+      .catch((error: unknown) => {
+        if (!deviceId) throw error;
+        return navigator.mediaDevices.getUserMedia(constraints(null));
+      })
       .then((result) => {
         if (cancelled) {
           result.getTracks().forEach((track) => track.stop());
@@ -46,7 +55,7 @@ export default function useCamera(): CameraState {
       cancelled = true;
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [deviceId]);
 
   return state;
 }

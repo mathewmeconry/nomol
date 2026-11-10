@@ -3,6 +3,8 @@ import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
+import useCameras from '~/hooks/use-cameras';
+import { loadCameraId, saveCameraId } from '~/lib/camera-choice';
 import useWakeLock from '~/hooks/use-wake-lock';
 import type { PoseDetector } from '~/lib/detection/pose-detector.client';
 import type { Pose } from '~/lib/detection/pose';
@@ -56,7 +58,16 @@ const floating =
   'rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold backdrop-blur disabled:opacity-40 sm:px-4 sm:py-2 sm:text-sm';
 
 export default function Tablet() {
-  const camera = useCamera();
+  // Not rendered into the HTML, so reading local storage on the first client render is safe.
+  const [cameraId, setCameraId] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : loadCameraId(),
+  );
+  const camera = useCamera(cameraId);
+  const cameras = useCameras(camera.status === 'ready');
+  const activeCameraId =
+    camera.status === 'ready'
+      ? camera.stream.getVideoTracks()[0]?.getSettings().deviceId
+      : undefined;
   useWakeLock();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -385,7 +396,25 @@ export default function Tablet() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {cameras.length > 1 && (
+            <select
+              aria-label="Kamera"
+              value={activeCameraId ?? ''}
+              disabled={status === 'recording'}
+              onChange={(event) => {
+                saveCameraId(event.target.value);
+                setCameraId(event.target.value);
+              }}
+              className={`${floating} max-w-36 text-slate-300 sm:max-w-48`}
+            >
+              {cameras.map((device, index) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Kamera ${index + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             aria-pressed={editingZone}
@@ -411,7 +440,7 @@ export default function Tablet() {
 
       {!showReplay && !editingZone && status === 'idle' && !loading && (
         <div
-          className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center backdrop-blur ${
+          className={`pointer-events-none absolute left-1/2 w-max max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center backdrop-blur ${
             clips.length > 0 ? 'bottom-28' : 'bottom-6'
           }`}
         >
