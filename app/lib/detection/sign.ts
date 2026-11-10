@@ -2,9 +2,11 @@ import { LM, isVisible, type Pose } from './pose';
 
 /**
  * From the side, crossed and plain raised arms look the same, so the sign only counts when the
- * person faces the camera: shoulders must look wide compared to the torso length.
+ * person faces the camera: shoulders must look wide compared to the torso length. MediaPipe's
+ * shoulder points sit inwards, so facing the camera measures only ~0.43–0.55 on real footage;
+ * in profile it drops to ~0.1–0.2.
  */
-const MIN_SHOULDER_TO_TORSO = 0.45;
+const MIN_SHOULDER_TO_TORSO = 0.3;
 /**
  * When forearms cross, MediaPipe often places both wrists almost on top of each other and their
  * left/right order flips between frames, so wrists this close (relative to shoulder width) count

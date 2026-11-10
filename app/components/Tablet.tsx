@@ -160,7 +160,11 @@ export default function Tablet() {
     });
   }
 
-  const onFrame = useEffectEvent((time: number, poses: Pose[]) => {
+  /**
+   * @param time when the camera captured the frame
+   * @param deliveredAt when the frame reached the page, before detection ran on it
+   */
+  const onFrame = useEffectEvent((time: number, deliveredAt: number, poses: Pose[]) => {
     const result = step(sessionRef.current, {
       time,
       poses,
@@ -173,7 +177,10 @@ export default function Tablet() {
     if (result.event?.type === 'start' && camera.status === 'ready') {
       activeRef.current = {
         recording: startRecording(camera.stream),
-        startedAt: time,
+        // The recorder only receives frames delivered from now on. Those were captured one
+        // delivery latency earlier, so the video's time 0 is the trigger frame's capture time
+        // plus the time detection took. Measured against the replay this lines up within a frame.
+        startedAt: time + (performance.now() - deliveredAt),
         startedDate: new Date(),
         frames: [],
         stills: [],
@@ -214,28 +221,31 @@ export default function Tablet() {
   useEffect(() => {
     if (!detector || camera.status !== 'ready') return;
     const poseDetector = detector;
-    let frame = 0;
-    let lastVideoTime = -1;
-    function tick() {
-      const video = videoRef.current;
-      // Only run detection on new camera frames; the screen may refresh faster.
-      if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-        lastVideoTime = video.currentTime;
-        const time = performance.now();
+    const video = videoRef.current;
+    if (!video) return;
+    let handle = 0;
+    let lastTime = -Infinity;
+    // Runs once per new camera frame. Frames are timed by when the camera captured them, not
+    // when detection gets to them, so the replay skeleton lines up with the recorded video.
+    function onVideoFrame(deliveredAt: number, metadata: VideoFrameCallbackMetadata) {
+      const time = metadata.captureTime ?? metadata.presentationTime;
+      // MediaPipe requires strictly increasing timestamps.
+      if (time > lastTime) {
+        lastTime = time;
         let poses: Pose[];
         try {
-          poses = poseDetector.detect(video, time);
+          poses = poseDetector.detect(video!, time);
         } catch (_error) {
           // MediaPipe needs WebGL even on the CPU; without it every frame fails.
           setDetectorError(true);
           return;
         }
-        onFrame(time, poses);
+        onFrame(time, deliveredAt, poses);
       }
-      frame = requestAnimationFrame(tick);
+      handle = video!.requestVideoFrameCallback(onVideoFrame);
     }
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    handle = video.requestVideoFrameCallback(onVideoFrame);
+    return () => video.cancelVideoFrameCallback(handle);
   }, [detector, camera.status]);
 
   const loading =

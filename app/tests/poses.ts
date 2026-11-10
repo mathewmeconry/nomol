@@ -21,7 +21,7 @@ type Options = {
  */
 export function makePose({ x, feetY, lift = 0, kind = 'stand', side = false }: Options): Pose {
   const base = feetY - lift;
-  const halfWidth = side ? 0.015 : 0.05;
+  const halfWidth = side ? 0.008 : 0.05;
   const at = (dx: number, height: number): Landmark => ({
     x: x + dx,
     y: base - height,

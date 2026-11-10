@@ -15,6 +15,14 @@ describe('isStartSign', () => {
     expect(isStartSign(pose)).toBe(true);
   });
 
+  it('accepts the sign when the shoulders look as narrow as on a real camera', () => {
+    // Facing the camera, MediaPipe measured shoulder width / torso length at about 0.43.
+    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
+    pose[LM.leftShoulder] = { ...pose[LM.leftShoulder], x: 0.5195 };
+    pose[LM.rightShoulder] = { ...pose[LM.rightShoulder], x: 0.4805 };
+    expect(isStartSign(pose)).toBe(true);
+  });
+
   it('rejects hands held together above the head with straight arms', () => {
     const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
     pose[LM.leftElbow] = { ...pose[LM.leftElbow], x: 0.52 };

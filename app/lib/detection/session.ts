@@ -4,6 +4,11 @@ import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
 
 /** How long the start sign must be held. */
 export const SIGN_HOLD_MS = 1000;
+/**
+ * On a real camera the sign drops out for a frame or two while it's held, so the hold only
+ * restarts when the sign has been gone for longer than this.
+ */
+const SIGN_DROPOUT_MS = 250;
 /** How long the gymnast must stand still on the floor before the recording stops. */
 export const STILL_MS = 1000;
 /** Stop when the tracked person has not been seen for this long (left the picture). */
@@ -26,7 +31,7 @@ export type Frame = {
   aspectRatio: number;
 };
 
-type Idle = { kind: 'idle'; signSince: number | null };
+type Idle = { kind: 'idle'; signSince: number | null; signSeenAt: number | null };
 
 type Recording = {
   kind: 'recording';
@@ -55,7 +60,7 @@ export type StepResult = {
   target: Pose | null;
 };
 
-export const initialSession: SessionState = { kind: 'idle', signSince: null };
+export const initialSession: SessionState = { kind: 'idle', signSince: null, signSeenAt: null };
 
 /**
  * Normalized coordinates stretch x by the aspect ratio (on 16:9, 0.1 across is 1.78× longer
@@ -105,11 +110,19 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
   }
 
   const signer = inZone.find(isStartSign);
-  if (!signer) return { state: { kind: 'idle', signSince: null }, event: null, target: null };
+  if (!signer) {
+    const droppedOut =
+      state.signSeenAt !== null && frame.time - state.signSeenAt <= SIGN_DROPOUT_MS;
+    return { state: droppedOut ? state : initialSession, event: null, target: null };
+  }
 
   const signSince = state.signSince ?? frame.time;
   if (frame.time - signSince < SIGN_HOLD_MS) {
-    return { state: { kind: 'idle', signSince }, event: null, target: null };
+    return {
+      state: { kind: 'idle', signSince, signSeenAt: frame.time },
+      event: null,
+      target: null,
+    };
   }
   return {
     state: startRecording(signer, frame.time),

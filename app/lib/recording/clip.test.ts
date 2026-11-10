@@ -1,6 +1,10 @@
-import { frameAt, frameDuration, type Clip, type ClipFrame } from './clip';
+import { frameDuration, poseAt, type Clip, type ClipFrame } from './clip';
 
-const frames: ClipFrame[] = [0, 33, 66, 100].map((time) => ({ time, pose: [] }));
+/** One-landmark poses whose x equals the frame time, so interpolation is easy to read. */
+const frames: ClipFrame[] = [0, 40, 80, 400].map((time) => ({
+  time,
+  pose: [{ x: time, y: 0, visibility: 1 }],
+}));
 
 function clip(overrides: Partial<Clip>): Clip {
   return {
@@ -14,19 +18,28 @@ function clip(overrides: Partial<Clip>): Clip {
   };
 }
 
-describe('frameAt', () => {
-  it('returns the closest frame', () => {
-    expect(frameAt(frames, 40)?.time).toBe(33);
-    expect(frameAt(frames, 60)?.time).toBe(66);
+describe('poseAt', () => {
+  it('interpolates between the neighbouring frames', () => {
+    expect(poseAt(frames, 10)?.[0].x).toBeCloseTo(10);
+    expect(poseAt(frames, 60)?.[0].x).toBeCloseTo(60);
+  });
+
+  it('returns a frame exactly at its time', () => {
+    expect(poseAt(frames, 40)?.[0].x).toBe(40);
+  });
+
+  it('takes the nearest frame across a gap without detections', () => {
+    expect(poseAt(frames, 120)?.[0].x).toBe(80);
+    expect(poseAt(frames, 380)?.[0].x).toBe(400);
   });
 
   it('clamps to the first and last frame', () => {
-    expect(frameAt(frames, -10)?.time).toBe(0);
-    expect(frameAt(frames, 500)?.time).toBe(100);
+    expect(poseAt(frames, -10)?.[0].x).toBe(0);
+    expect(poseAt(frames, 500)?.[0].x).toBe(400);
   });
 
   it('returns null without frames', () => {
-    expect(frameAt([], 10)).toBeNull();
+    expect(poseAt([], 10)).toBeNull();
   });
 });
 

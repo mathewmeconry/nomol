@@ -69,6 +69,15 @@ describe('starting', () => {
     expect(events[0]?.event).toMatchObject({ type: 'start', pose });
   });
 
+  it('keeps counting when the sign drops out for a frame or two', () => {
+    // Real camera: the sign is missed in single frames while it is held.
+    const { events } = run(
+      (t) => [makePose({ x: 0.45, feetY: 0.9, kind: t % 300 < 66 ? 'stand' : 'sign' })],
+      1500,
+    );
+    expect(events[0]?.event).toMatchObject({ type: 'start', reason: 'sign' });
+  });
+
   it('does not start when the sign is released too early', () => {
     const { events } = run(
       (t) => [makePose({ x: 0.45, feetY: 0.9, kind: t < 600 || t > 900 ? 'sign' : 'stand' })],

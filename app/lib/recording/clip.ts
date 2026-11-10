@@ -18,8 +18,15 @@ export type Clip = {
 /** Fallback when a clip has too few frames to measure the camera's frame rate. */
 const DEFAULT_FRAME_MS = 1000 / 30;
 
-/** Entry closest to `time`. Entries are in chronological order. */
-export function frameAt(frames: ClipFrame[], time: number): ClipFrame | null {
+/** Longer gaps mean the gymnast wasn't detected in between; don't invent poses across them. */
+const MAX_INTERPOLATION_GAP_MS = 200;
+
+/**
+ * Pose at `time`, interpolated between the neighbouring frames. Detection runs slower than the
+ * video, so taking the nearest frame visibly lags behind fast movements. Frames are in
+ * chronological order.
+ */
+export function poseAt(frames: ClipFrame[], time: number): Pose | null {
   if (frames.length === 0) return null;
   let low = 0;
   let high = frames.length - 1;
@@ -30,7 +37,21 @@ export function frameAt(frames: ClipFrame[], time: number): ClipFrame | null {
   }
   const after = frames[low];
   const before = frames[low - 1];
-  return before && time - before.time < after.time - time ? before : after;
+  if (!before || after.time <= time) return after.pose;
+
+  const gap = after.time - before.time;
+  if (gap > MAX_INTERPOLATION_GAP_MS) {
+    return time - before.time < after.time - time ? before.pose : after.pose;
+  }
+  const u = (time - before.time) / gap;
+  return before.pose.map((a, i) => {
+    const b = after.pose[i];
+    return {
+      x: a.x + (b.x - a.x) * u,
+      y: a.y + (b.y - a.y) * u,
+      visibility: Math.min(a.visibility ?? 1, b.visibility ?? 1),
+    };
+  });
 }
 
 /**

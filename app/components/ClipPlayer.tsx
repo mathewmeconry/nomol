@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { drawSkeleton, prepareCanvas } from '~/lib/draw';
-import { frameAt, frameDuration, type Clip } from '~/lib/recording/clip';
+import { frameDuration, poseAt, type Clip } from '~/lib/recording/clip';
 
 const SPEEDS = [
   { value: 0.25, label: '¼×' },
@@ -39,7 +39,8 @@ const button =
 export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [playing, setPlaying] = useState(true);
+  // Follows the video's own play/pause events, so the button never disagrees with it.
+  const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [skeleton, setSkeleton] = useState(true);
   const [timeMs, setTimeMs] = useState(0);
@@ -57,10 +58,8 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
         const time = video.currentTime * 1000;
         setTimeMs(time);
         const surface = prepareCanvas(canvas);
-        const current = skeleton ? frameAt(clip.frames, time) : null;
-        if (surface && current) {
-          drawSkeleton(surface.ctx, current.pose, surface.width, surface.height);
-        }
+        const pose = skeleton ? poseAt(clip.frames, time) : null;
+        if (surface && pose) drawSkeleton(surface.ctx, pose, surface.width, surface.height);
       }
       frame = requestAnimationFrame(render);
     }
@@ -71,20 +70,14 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
   function togglePlay() {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) {
-      void video.play();
-      setPlaying(true);
-    } else {
-      video.pause();
-      setPlaying(false);
-    }
+    if (video.paused) void video.play();
+    else video.pause();
   }
 
   function seek(ms: number) {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
-    setPlaying(false);
     video.currentTime = Math.min(Math.max(ms, 0), clip.durationMs) / 1000;
   }
 
@@ -107,6 +100,8 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive }: Pro
           loop
           muted
           playsInline
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
         />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>
