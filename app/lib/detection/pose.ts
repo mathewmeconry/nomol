@@ -41,6 +41,11 @@ export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/** Converts normalized x to image-height units so x and y distances are comparable. */
+export function scalePose(pose: Pose, aspectRatio: number): Pose {
+  return pose.map((landmark) => ({ ...landmark, x: landmark.x * aspectRatio }));
+}
+
 /** Lowest point of the body in the image (largest y), i.e. where the feet are. */
 export function lowestAnkleY(pose: Pose): number {
   return Math.max(pose[LM.leftAnkle].y, pose[LM.rightAnkle].y);

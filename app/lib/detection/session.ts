@@ -1,6 +1,6 @@
-import { bodySize, distance, hipCenter, type Point, type Pose } from './pose';
+import { bodySize, distance, hipCenter, scalePose, type Point, type Pose } from './pose';
 import { isStartSign } from './sign';
-import { isInZone, isOnFloor, zoneCenter, type Zone } from './zone';
+import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
 
 /** How long the start sign must be held. */
 export const SIGN_HOLD_MS = 1000;
@@ -8,7 +8,7 @@ export const SIGN_HOLD_MS = 1000;
 export const STILL_MS = 1000;
 /** Stop when the tracked person has not been seen for this long (left the picture). */
 export const LOST_MS = 1500;
-/** Largest hip jump between frames (image units) that still counts as the same person. */
+/** Largest hip jump between frames (image heights) that still counts as the same person. */
 const MAX_JUMP = 0.15;
 /** Hip movement below this (relative to body size) counts as standing still. */
 const STILL_TOLERANCE = 0.06;
@@ -17,10 +17,13 @@ const MOVED_DISTANCE = 0.5;
 
 export type Frame = {
   time: number;
+  /** Normalized image coordinates, as MediaPipe returns them. */
   poses: Pose[];
   zone: Zone;
   /** "Aufnahme starten" was tapped and is waiting for a person in the start zone. */
   armed: boolean;
+  /** Image width / height. */
+  aspectRatio: number;
 };
 
 type Idle = { kind: 'idle'; signSince: number | null };
@@ -54,8 +57,25 @@ export type StepResult = {
 
 export const initialSession: SessionState = { kind: 'idle', signSince: null };
 
+/**
+ * Normalized coordinates stretch x by the aspect ratio (on 16:9, 0.1 across is 1.78× longer
+ * than 0.1 down), which skews every distance and the shoulder-width check of the sign. All
+ * decisions are therefore made in image-height units; callers get their original poses back.
+ */
 export function step(state: SessionState, frame: Frame): StepResult {
-  return state.kind === 'idle' ? stepIdle(state, frame) : stepRecording(state, frame);
+  const poses = frame.poses.map((pose) => scalePose(pose, frame.aspectRatio));
+  const scaled: Frame = { ...frame, poses, zone: scaleZone(frame.zone, frame.aspectRatio) };
+  const result = state.kind === 'idle' ? stepIdle(state, scaled) : stepRecording(state, scaled);
+
+  const original = (pose: Pose) => frame.poses[poses.indexOf(pose)];
+  return {
+    state: result.state,
+    event:
+      result.event?.type === 'start'
+        ? { ...result.event, pose: original(result.event.pose) }
+        : result.event,
+    target: result.target && original(result.target),
+  };
 }
 
 function startRecording(pose: Pose, time: number): Recording {

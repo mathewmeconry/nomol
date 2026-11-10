@@ -20,13 +20,19 @@ type Scene = (time: number) => Pose[];
 function run(
   scene: Scene,
   durationMs: number,
-  options: { from?: SessionState; start?: number; armed?: boolean } = {},
+  options: { from?: SessionState; start?: number; armed?: boolean; aspectRatio?: number } = {},
 ) {
   let state = options.from ?? initialSession;
   const events: { time: number; event: SessionEvent }[] = [];
   const start = options.start ?? 0;
   for (let time = start; time <= start + durationMs; time += 1000 / FPS) {
-    const result = step(state, { time, poses: scene(time), zone, armed: options.armed ?? false });
+    const result = step(state, {
+      time,
+      poses: scene(time),
+      zone,
+      armed: options.armed ?? false,
+      aspectRatio: options.aspectRatio ?? 1,
+    });
     state = result.state;
     if (result.event) events.push({ time, event: result.event });
   }
@@ -39,6 +45,28 @@ describe('starting', () => {
     expect(events).toHaveLength(1);
     expect(events[0].event).toMatchObject({ type: 'start', reason: 'sign' });
     expect(events[0].time).toBeGreaterThanOrEqual(SIGN_HOLD_MS);
+  });
+
+  it('recognizes the sign on a 16:9 camera image', () => {
+    // MediaPipe normalizes x by the image width, so on 16:9 the shoulders look 1.78× narrower
+    // in raw coordinates than they are. Found with a real recording.
+    const aspectRatio = 16 / 9;
+    const squeezed = (pose: Pose) =>
+      pose.map((p) => ({ ...p, x: 0.45 + (p.x - 0.45) / aspectRatio }));
+    const { events } = run(
+      () => [squeezed(makePose({ x: 0.45, feetY: 0.9, kind: 'sign' }))],
+      1500,
+      {
+        aspectRatio,
+      },
+    );
+    expect(events[0]?.event).toMatchObject({ type: 'start', reason: 'sign' });
+  });
+
+  it('returns the original, unscaled pose of the person who started', () => {
+    const pose = makePose({ x: 0.45, feetY: 0.9, kind: 'sign' });
+    const { events } = run(() => [pose], 1500, { aspectRatio: 16 / 9 });
+    expect(events[0]?.event).toMatchObject({ type: 'start', pose });
   });
 
   it('does not start when the sign is released too early', () => {

@@ -1,9 +1,25 @@
 import { makePose } from '~/tests/poses';
+import { LM } from './pose';
 import { isStartSign } from './sign';
 
 describe('isStartSign', () => {
   it('accepts forearms crossed above the head, facing the camera', () => {
     expect(isStartSign(makePose({ x: 0.5, feetY: 0.9, kind: 'sign' }))).toBe(true);
+  });
+
+  it('accepts crossed forearms when the wrists overlap without swapping sides', () => {
+    // A real recording: both wrists land on almost the same x, the left one a hair to its side.
+    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
+    pose[LM.leftWrist] = { ...pose[LM.leftWrist], x: 0.504 };
+    pose[LM.rightWrist] = { ...pose[LM.rightWrist], x: 0.5 };
+    expect(isStartSign(pose)).toBe(true);
+  });
+
+  it('rejects hands held together above the head with straight arms', () => {
+    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
+    pose[LM.leftElbow] = { ...pose[LM.leftElbow], x: 0.52 };
+    pose[LM.rightElbow] = { ...pose[LM.rightElbow], x: 0.48 };
+    expect(isStartSign(pose)).toBe(false);
   });
 
   it('rejects raised arms that are not crossed', () => {

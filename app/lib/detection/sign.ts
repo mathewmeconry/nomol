@@ -5,10 +5,18 @@ import { LM, isVisible, type Pose } from './pose';
  * person faces the camera: shoulders must look wide compared to the torso length.
  */
 const MIN_SHOULDER_TO_TORSO = 0.45;
+/**
+ * When forearms cross, MediaPipe often places both wrists almost on top of each other and their
+ * left/right order flips between frames, so wrists this close (relative to shoulder width) count
+ * as crossed too. Plain raised arms keep the wrists about a shoulder width apart.
+ */
+const MAX_WRIST_GAP = 0.4;
+/** In an X the elbows point outwards; hands held together with straight arms don't count. */
+const MIN_ELBOW_GAP = 0.9;
 
 /**
  * Start sign: forearms crossed above the head, facing the camera.
- * Crossed means the wrists have swapped sides relative to the shoulders.
+ * Expects coordinates in equal units on both axes (see `scalePose`).
  */
 export function isStartSign(pose: Pose): boolean {
   if (
@@ -17,6 +25,8 @@ export function isStartSign(pose: Pose): boolean {
       LM.nose,
       LM.leftShoulder,
       LM.rightShoulder,
+      LM.leftElbow,
+      LM.rightElbow,
       LM.leftWrist,
       LM.rightWrist,
       LM.leftHip,
@@ -33,12 +43,16 @@ export function isStartSign(pose: Pose): boolean {
   const rw = pose[LM.rightWrist];
   const shoulderY = (ls.y + rs.y) / 2;
   const hipY = (pose[LM.leftHip].y + pose[LM.rightHip].y) / 2;
+  const shoulderWidth = Math.abs(ls.x - rs.x);
 
   const torso = hipY - shoulderY;
   if (torso <= 0) return false;
-  if (Math.abs(ls.x - rs.x) < MIN_SHOULDER_TO_TORSO * torso) return false;
+  if (shoulderWidth < MIN_SHOULDER_TO_TORSO * torso) return false;
 
   const wristsAboveHead = lw.y < nose.y && rw.y < nose.y;
-  const wristsCrossed = Math.sign(lw.x - rw.x) !== Math.sign(ls.x - rs.x);
-  return wristsAboveHead && wristsCrossed;
+  const wristsSwapped = Math.sign(lw.x - rw.x) !== Math.sign(ls.x - rs.x);
+  const wristsTogether = Math.abs(lw.x - rw.x) < MAX_WRIST_GAP * shoulderWidth;
+  const elbowsWide =
+    Math.abs(pose[LM.leftElbow].x - pose[LM.rightElbow].x) > MIN_ELBOW_GAP * shoulderWidth;
+  return wristsAboveHead && (wristsSwapped || wristsTogether) && elbowsWide;
 }

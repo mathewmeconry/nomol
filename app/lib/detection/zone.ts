@@ -21,6 +21,11 @@ export function isOnFloor(pose: Pose, zone: Zone): boolean {
   return lowestAnkleY(pose) >= zone.bottom - FLOOR_TOLERANCE * bodySize(pose);
 }
 
+/** See `scalePose`: same conversion of x into image-height units. */
+export function scaleZone(zone: Zone, aspectRatio: number): Zone {
+  return { ...zone, left: zone.left * aspectRatio, right: zone.right * aspectRatio };
+}
+
 export function zoneCenter(zone: Zone): Point {
   return { x: (zone.left + zone.right) / 2, y: (zone.top + zone.bottom) / 2 };
 }

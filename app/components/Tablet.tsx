@@ -118,7 +118,13 @@ export default function Tablet() {
   }
 
   const onFrame = useEffectEvent((time: number, poses: Pose[]) => {
-    const result = step(sessionRef.current, { time, poses, zone, armed: armedAt !== null });
+    const result = step(sessionRef.current, {
+      time,
+      poses,
+      zone,
+      armed: armedAt !== null,
+      aspectRatio,
+    });
     sessionRef.current = result.state;
 
     if (result.event?.type === 'start' && camera.status === 'ready') {
@@ -170,7 +176,15 @@ export default function Tablet() {
       if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
         lastVideoTime = video.currentTime;
         const time = performance.now();
-        onFrame(time, poseDetector.detect(video, time));
+        let poses: Pose[];
+        try {
+          poses = poseDetector.detect(video, time);
+        } catch (_error) {
+          // MediaPipe needs WebGL even on the CPU; without it every frame fails.
+          setDetectorError(true);
+          return;
+        }
+        onFrame(time, poses);
       }
       frame = requestAnimationFrame(tick);
     }
@@ -182,7 +196,7 @@ export default function Tablet() {
     camera.status === 'error'
       ? camera.message
       : detectorError
-        ? 'Die Erkennung konnte nicht geladen werden. Prüfe die Internetverbindung und lade die Seite neu.'
+        ? 'Die Erkennung läuft nicht. Prüfe die Internetverbindung, nutze einen aktuellen Browser und lade die Seite neu.'
         : camera.status === 'starting'
           ? 'Kamera startet …'
           : !detector

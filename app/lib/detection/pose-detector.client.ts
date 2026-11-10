@@ -24,7 +24,8 @@ export async function createPoseDetector(): Promise<PoseDetector> {
       numPoses: MAX_POSES,
     });
   }
-  // The GPU is much faster, but needs WebGL, which some browsers or devices don't provide.
+  // The GPU delegate is much faster but can fail to start on some devices. Note that MediaPipe
+  // still needs WebGL to read video frames, so the CPU fallback doesn't help without it.
   const landmarker = await create('GPU').catch((_error: unknown) => create('CPU'));
 
   return {
