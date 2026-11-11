@@ -1,4 +1,5 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import { download } from '~/lib/download';
 import type { Pose } from './pose';
 
 // Loaded from the network for now; bundle these for halls without internet.
@@ -24,38 +25,6 @@ export type PoseDetector = {
   detect: (video: HTMLVideoElement, timeMs: number) => Pose[];
   close: () => void;
 };
-
-/**
- * Downloads a model, reporting progress as whole percents (MediaPipe's own loading reports none).
- * Goes through the service worker like any fetch, so the model is cached for offline use.
- */
-async function download(url: string, onProgress?: (percent: number) => void) {
-  const response = await fetch(url);
-  if (!response.ok || !response.body) throw new Error(`Model download failed: ${response.status}`);
-  const total = Number(response.headers.get('content-length'));
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let loaded = 0;
-  let reported = -1;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.length;
-    const percent = Math.min(100, Math.floor((loaded / total) * 100));
-    if (total && percent !== reported) {
-      reported = percent;
-      onProgress?.(percent);
-    }
-  }
-  const model = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    model.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return model;
-}
 
 /** @param onProgress download progress of the model in percent, the bulk of the startup time */
 export async function createPoseDetector(

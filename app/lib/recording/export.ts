@@ -1,7 +1,10 @@
 import type { Clip } from './clip';
 
-/** Bump when the JSON layout changes, so old exports can still be read correctly. */
-const EXPORT_VERSION = 1;
+/**
+ * Bump when the JSON layout changes, so old exports can still be read correctly.
+ * 2: adds `skeleton` (RTMPose, the replay skeleton) next to `frames` (MediaPipe, live).
+ */
+const EXPORT_VERSION = 2;
 
 /** e.g. "nomol-2026-11-10_17-45-02", in local time like the clip list. */
 export function exportBaseName(startedAt: Date): string {
@@ -21,5 +24,6 @@ export function exportData(clip: Clip, userAgent: string) {
     zone: clip.zone,
     userAgent,
     frames: clip.frames,
+    skeleton: clip.skeleton,
   };
 }

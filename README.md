@@ -25,6 +25,10 @@ Pose detection loads its WASM and model from the internet. After one visit with 
 service worker (`public/sw.js`, production builds only) keeps the app and the model available
 offline.
 
+Live detection (start sign, following, stopping) uses MediaPipe Pose. The replay skeleton is
+computed after each recording with [RTMPose](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose)
+(RTMPose-m, Apache-2.0, `public/models/rtmpose-m.onnx`), which handles handstands far better.
+
 The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
 uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.txt` (JSON body
 points per frame, start zone, aspect ratio).

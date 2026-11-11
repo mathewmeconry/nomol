@@ -1,5 +1,12 @@
 import { makePose } from '~/tests/poses';
-import { frameDuration, poseAt, routineRange, type Clip, type ClipFrame } from './clip';
+import {
+  frameDuration,
+  insertFrame,
+  poseAt,
+  routineRange,
+  type Clip,
+  type ClipFrame,
+} from './clip';
 
 /** One-landmark poses whose x equals the frame time, so interpolation is easy to read. */
 const frames: ClipFrame[] = [0, 40, 80, 400].map((time) => ({
@@ -14,6 +21,7 @@ function clip(overrides: Partial<Clip>): Clip {
     startedAt: new Date(0),
     durationMs: 1000,
     frames: [],
+    skeleton: [],
     thumbnail: null,
     zone: { left: 0, top: 0, right: 1, bottom: 1 },
     aspectRatio: 16 / 9,
@@ -31,18 +39,32 @@ describe('poseAt', () => {
     expect(poseAt(frames, 40)?.[0].x).toBe(40);
   });
 
-  it('takes the nearest frame across a gap without detections', () => {
+  it('takes the nearest frame at the edge of a gap without detections', () => {
     expect(poseAt(frames, 120)?.[0].x).toBe(80);
     expect(poseAt(frames, 380)?.[0].x).toBe(400);
   });
 
-  it('clamps to the first and last frame', () => {
+  it('shows nothing in the middle of a gap', () => {
+    // E.g. a part of the skeleton that isn't computed yet.
+    expect(poseAt(frames, 240)).toBeNull();
+  });
+
+  it('extends the first and last frame only a little', () => {
     expect(poseAt(frames, -10)?.[0].x).toBe(0);
-    expect(poseAt(frames, 500)?.[0].x).toBe(400);
+    expect(poseAt(frames, 450)?.[0].x).toBe(400);
+    expect(poseAt(frames, 600)).toBeNull();
   });
 
   it('returns null without frames', () => {
     expect(poseAt([], 10)).toBeNull();
+  });
+});
+
+describe('insertFrame', () => {
+  it('keeps frames in time order', () => {
+    const at = (time: number) => ({ time, pose: [] });
+    const frames = insertFrame(insertFrame([at(100), at(300)], at(200)), at(0));
+    expect(frames.map((f) => f.time)).toEqual([0, 100, 200, 300]);
   });
 });
 

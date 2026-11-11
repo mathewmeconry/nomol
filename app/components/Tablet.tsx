@@ -23,10 +23,18 @@ import type { Pose } from '~/lib/detection/pose';
 import { initialSession, step, type SessionState } from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawStartSign, drawZone, prepareCanvas } from '~/lib/draw';
-import { routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
-import { deleteClip, loadClips, saveClip } from '~/lib/recording/clip-store.client';
+import { insertFrame, routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
+import { deleteClip, loadClips, saveClip, saveSkeleton } from '~/lib/recording/clip-store.client';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
+import {
+  captureCrop,
+  createSkeletonRefiner,
+  type CropFrame,
+  type SkeletonProgress,
+  type SkeletonRefiner,
+} from '~/lib/skeleton/refiner.client';
+import { cropAround } from '~/lib/skeleton/rtmpose';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
 import { cn } from '~/lib/utils';
 import { DEFAULT_ZONE, loadZone, saveZone } from '~/lib/zone-storage';
@@ -40,6 +48,14 @@ const MAX_CLIPS = 8;
  * in advance, so candidate stills are grabbed this often and one is picked at the end.
  */
 const STILL_EVERY_MS = 500;
+/**
+ * How often the gymnast is cropped for the RTMPose skeleton. 10 per second look smooth with
+ * interpolation and keep the computation after a recording short.
+ */
+const CROP_EVERY_MS = 100;
+/** The crop covers the gymnast's poses over this long (see `cropAround`). */
+const CROP_WINDOW_MS = 500;
+const SKELETON_MODEL_URL = `${import.meta.env.BASE_URL}models/rtmpose-m.onnx`;
 
 type Status = 'idle' | 'sign' | 'armed' | 'recording';
 
@@ -63,6 +79,7 @@ type ActiveRecording = {
   startedDate: Date;
   frames: ClipFrame[];
   stills: { time: number; url: string }[];
+  crops: CropFrame[];
   zone: Zone;
   aspectRatio: number;
 };
@@ -90,6 +107,10 @@ export default function Tablet() {
   const thumbnailCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sessionRef = useRef<SessionState>(initialSession);
   const activeRef = useRef<ActiveRecording | null>(null);
+  const refinerRef = useRef<SkeletonRefiner | null>(null);
+  /** Clips deleted or dropped, so their skeleton computation stops. */
+  const removedRef = useRef(new Set<string>());
+  const [skeletonProgress, setSkeletonProgress] = useState<Record<string, SkeletonProgress>>({});
 
   const [detector, setDetector] = useState<PoseDetector | null>(null);
   const [detectorError, setDetectorError] = useState(false);
@@ -123,7 +144,13 @@ export default function Tablet() {
     let created: PoseDetector | null = null;
     let cancelled = false;
     import('~/lib/detection/pose-detector.client')
-      .then((module) => module.createPoseDetector(setModelProgress))
+      // A cancelled load (e.g. React's double effect in development) keeps downloading; its
+      // progress must not mix with the current one.
+      .then((module) =>
+        module.createPoseDetector((percent) => {
+          if (!cancelled) setModelProgress(percent);
+        }),
+      )
       .then((result) => {
         if (cancelled) return result.close();
         created = result;
@@ -149,6 +176,8 @@ export default function Tablet() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => () => refinerRef.current?.close(), []);
 
   useEffect(() => {
     if (armedAt === null) return;
@@ -195,12 +224,14 @@ export default function Tablet() {
       startedAt: active.startedDate,
       durationMs,
       frames: active.frames,
+      skeleton: [],
       thumbnail: middle?.url ?? null,
       zone: active.zone,
       aspectRatio: active.aspectRatio,
     };
     setClips((previous) => {
       for (const old of previous.slice(MAX_CLIPS - 1)) {
+        removedRef.current.add(old.id);
         URL.revokeObjectURL(old.url);
         void deleteClip(old.id).catch(() => {});
       }
@@ -210,6 +241,57 @@ export default function Tablet() {
     setView('replay');
     // A full or blocked storage only means the clip won't survive a reload.
     void saveClip(clip, blob).catch(() => {});
+    computeSkeleton(clip, active.crops, { startMs, endMs });
+  }
+
+  /** Runs RTMPose on the crops in the background and fills in the clip's skeleton as it goes. */
+  function computeSkeleton(
+    clip: Clip,
+    crops: CropFrame[],
+    first: { startMs: number; endMs: number },
+  ) {
+    const video = videoRef.current;
+    if (!video || crops.length === 0) return;
+    refinerRef.current ??= createSkeletonRefiner(SKELETON_MODEL_URL);
+    let skeleton: ClipFrame[] = [];
+    const setProgress = (progress: SkeletonProgress | null) =>
+      setSkeletonProgress((previous) => {
+        const { [clip.id]: _done, ...others } = previous;
+        return progress ? { ...others, [clip.id]: progress } : others;
+      });
+    refinerRef.current
+      .refine({
+        frames: crops,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        first,
+        onFrame(frame) {
+          skeleton = insertFrame(skeleton, frame);
+          setClips((previous) => previous.map((c) => (c.id === clip.id ? { ...c, skeleton } : c)));
+        },
+        onProgress: setProgress,
+        isCancelled: () => removedRef.current.has(clip.id),
+      })
+      .then(() => {
+        setProgress(null);
+        if (!removedRef.current.has(clip.id)) void saveSkeleton(clip.id, skeleton).catch(() => {});
+      })
+      .catch(() => setProgress({ stage: 'failed', percent: 0 }));
+  }
+
+  /** Call after adding the current frame to `active.frames`. */
+  function recordCrop(active: ActiveRecording, time: number) {
+    const video = videoRef.current;
+    const now = time - active.startedAt;
+    const last = active.crops[active.crops.length - 1];
+    if (!video || (last && now - last.time < CROP_EVERY_MS)) return;
+    const recent = active.frames.filter((frame) => frame.time >= now - CROP_WINDOW_MS);
+    const crop = cropAround(
+      recent.map((frame) => frame.pose),
+      video.videoWidth,
+      video.videoHeight,
+    );
+    active.crops.push({ time: now, crop, image: captureCrop(video, crop) });
   }
 
   function recordStill(active: ActiveRecording, time: number) {
@@ -247,6 +329,7 @@ export default function Tablet() {
         startedDate: new Date(),
         frames: [],
         stills: [],
+        crops: [],
         zone,
         aspectRatio,
       };
@@ -255,7 +338,10 @@ export default function Tablet() {
     }
     const active = activeRef.current;
     if (active) {
-      if (result.target) active.frames.push({ time: time - active.startedAt, pose: result.target });
+      if (result.target) {
+        active.frames.push({ time: time - active.startedAt, pose: result.target });
+        recordCrop(active, time);
+      }
       recordStill(active, time);
     }
     if (result.event?.type === 'stop') void finishRecording(time);
@@ -356,8 +442,10 @@ export default function Tablet() {
           clip={current}
           aspectRatio={aspectRatio}
           clipStrip={clipStrip}
+          skeletonProgress={skeletonProgress[current.id] ?? null}
           onLive={() => setView('live')}
           onDelete={() => {
+            removedRef.current.add(current.id);
             const remaining = clips.filter((clip) => clip.id !== current.id);
             URL.revokeObjectURL(current.url);
             void deleteClip(current.id).catch(() => {});

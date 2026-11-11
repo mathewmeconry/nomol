@@ -30,7 +30,9 @@ Requirements, as agreed with the owner:
   the ultra-wide lens if the phone allows zooming below 1×.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
   next gymnast. Speeds ¼× / ½× / 1×, frame steps (1 and 5), skeleton overlay incl. head; left side
-  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts.
+  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts. The replay
+  skeleton is RTMPose, computed after the recording with a progress bar above the timeline; parts
+  not computed yet show no skeleton (never MediaPipe's live one, it's wrong upside down).
 - **Clips:** recent recordings as a strip with one thumbnail each. Last 8 kept on the device
   (IndexedDB), deletable with two taps, exportable as video + `.nomol.txt` (JSON; Chrome on
   Android won't share `.json` files).
@@ -58,10 +60,16 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
   from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 150 ms per frame
-  (median over the first 3 s of detection), the lite model takes over.
+  (median over the first 3 s of detection), the lite model takes over. MediaPipe drives
+  everything live (sign, tracking, stop, trimming).
+- Replay skeleton: RTMPose-m (body7, 256×192, Apache-2.0) with `onnxruntime-web` on the CPU in a
+  worker (`app/lib/skeleton/`). While recording, the gymnast is cropped around MediaPipe's pose
+  10× per second and kept as small JPEGs; afterwards RTMPose runs on the crops, the routine first.
+  The model is `public/models/rtmpose-m.onnx` (54 MB, from openmmlab's ONNX SDK release).
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
   (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
-- Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
+- Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model, RTMPose model),
+  production only.
 - vitest + Testing Library (jsdom)
 - pnpm only, Node >= 24
 - Database (when needed): Prisma with Postgres. Not added yet; don't add it without a feature
@@ -76,6 +84,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - `app/components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
 - `app/lib/recording/`: clips, recorder, storage, export, skeleton interpolation (`poseAt`).
+- `app/lib/skeleton/`: RTMPose replay skeleton. `rtmpose.ts` crop/pre/post-processing (pure,
+  tested), `rtmpose.worker.ts` inference, `refiner.client.ts` crop capture and the job queue.
 - `app/tests/poses.ts`: builds synthetic poses for tests.
 
 ## Detection notes (learned from real footage)
@@ -92,20 +102,33 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   the right way up, full 19/17, heavy 31/21. Going into a handstand the skeleton flips between
   upright and upside down, so the person is followed by the torso centre (middle of shoulders
   and hips, unchanged by a flip), and the search radius widens while they aren't found.
-- "On the floor" needs both ankles near the floor line and both knees ≥ 0.1 body sizes below the hips (standing measured ≥ 0.13, a
-  raised leg ≤ 0). Ankles alone fail close to a low phone camera: a raised foot still looks near
-  the floor line, and feet are often out of the picture (MediaPipe then guesses them below it).
+- "On the floor" needs both ankles near the floor line and both knees ≥ 0.1 body sizes below the
+  hips (standing measured ≥ 0.13, a raised leg ≤ 0). Ankles alone fail close to a low phone
+  camera: a raised foot still looks near the floor line, and feet are often out of the picture
+  (MediaPipe then guesses them below it).
+- RTMPose (same handstand recording, 47 handstand frames, Python): YOLOX-s + RTMPose-m found 47
+  and got 44 the right way up, MediaPipe heavy ~33. The detector matters most (YOLOX-tiny/nano
+  missed a quarter); RTMO-s/m were poor (8/15). On MediaPipe's box as crop (no detector) RTMPose
+  got 43 of 48 with 1.75× padding (1.25× found only 40). In the app the crop is never smaller
+  than the gymnast's median size over the last 0.5 s: MediaPipe sometimes collapses the skeleton
+  onto part of the body, and the combined extent instead made the person too small.
+- onnxruntime-web 1.30 WebGPU computes RTMPose-m wrong (keypoints pinned to the crop edges; the
+  same input in Python is fine) while YOLOX-s works on WebGPU (~90 ms). On WASM RTMPose-m takes
+  ~190 ms per crop on a laptop, MediaPipe heavy on the GPU ~35 ms per frame.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.
 
-## Export format (`.nomol.txt`, JSON, version 1)
+## Export format (`.nomol.txt`, JSON, version 2)
 
-`{ version, startedAt, durationMs, aspectRatio, zone, userAgent, frames }`. `frames` are the
-tracked person's 33 MediaPipe landmarks (`x`, `y` normalized to the image, `visibility`) with
-`time` in ms relative to the video's start; times can be slightly negative. Only frames while
-recording are included, so start detection can't be replayed from an export, but stop timing,
-tracking and skeleton quality can be analyzed alongside the video.
+`{ version, startedAt, durationMs, aspectRatio, zone, userAgent, frames, skeleton }`. `frames`
+are the tracked person's 33 MediaPipe landmarks (`x`, `y` normalized to the image, `visibility`)
+with `time` in ms relative to the video's start; times can be slightly negative. Only frames
+while recording are included, so start detection can't be replayed from an export, but stop
+timing, tracking and skeleton quality can be analyzed alongside the video. `skeleton` is the
+RTMPose replay skeleton (~10 per second) in the same 33-point layout; landmarks RTMPose doesn't
+have (hands, feet details) and unsure keypoints have visibility 0. It may be partial if exported
+before it finished. Version 1 had no `skeleton`.
 
 ## Testing in a browser
 

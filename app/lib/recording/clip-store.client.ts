@@ -1,4 +1,4 @@
-import type { Clip } from './clip';
+import type { Clip, ClipFrame } from './clip';
 
 /**
  * Keeps recent clips in the browser's IndexedDB, so a reload or a killed app doesn't lose them.
@@ -8,7 +8,11 @@ import type { Clip } from './clip';
 const DB_NAME = 'nomol';
 const STORE = 'clips';
 
-type StoredClip = Omit<Clip, 'url'> & { video: Blob };
+type StoredClip = Omit<Clip, 'url' | 'skeleton'> & {
+  video: Blob;
+  /** Missing in clips stored before the RTMPose skeleton existed. */
+  skeleton?: ClipFrame[];
+};
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -37,6 +41,12 @@ export async function saveClip(clip: Clip, video: Blob) {
   await run('readwrite', (store) => store.put({ ...data, video } satisfies StoredClip));
 }
 
+/** Stores the skeleton once it's computed (the clip itself is saved right after recording). */
+export async function saveSkeleton(id: string, skeleton: ClipFrame[]) {
+  const stored = await run<StoredClip | undefined>('readonly', (store) => store.get(id));
+  if (stored) await run('readwrite', (store) => store.put({ ...stored, skeleton }));
+}
+
 export async function deleteClip(id: string) {
   await run('readwrite', (store) => store.delete(id));
 }
@@ -45,6 +55,10 @@ export async function deleteClip(id: string) {
 export async function loadClips(): Promise<Clip[]> {
   const stored = await run<StoredClip[]>('readonly', (store) => store.getAll());
   return stored
-    .map(({ video, ...clip }) => ({ ...clip, url: URL.createObjectURL(video) }))
+    .map(({ video, skeleton, ...clip }) => ({
+      ...clip,
+      skeleton: skeleton ?? [],
+      url: URL.createObjectURL(video),
+    }))
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 }

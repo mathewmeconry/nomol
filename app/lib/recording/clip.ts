@@ -11,7 +11,13 @@ export type Clip = {
   startedAt: Date;
   /** Measured by us: MediaRecorder WebM files often report an unknown duration. */
   durationMs: number;
+  /** MediaPipe's live tracking of the gymnast: drives start, stop and trimming. */
   frames: ClipFrame[];
+  /**
+   * The replay skeleton, computed by RTMPose after recording (better upside down). Filled in
+   * while it's being computed, so it may cover only part of the clip; sorted by time.
+   */
+  skeleton: ClipFrame[];
   /** Still from the middle of the routine, as a data URL, for the clip list. */
   thumbnail: string | null;
   /** Start zone and camera aspect ratio at recording time, so exports can be replayed. */
@@ -53,28 +59,43 @@ const DEFAULT_FRAME_MS = 1000 / 30;
 /** Longer gaps mean the gymnast wasn't detected in between; don't invent poses across them. */
 const MAX_INTERPOLATION_GAP_MS = 200;
 
-/**
- * Pose at `time`, interpolated between the neighbouring frames. Detection runs slower than the
- * video, so taking the nearest frame visibly lags behind fast movements. Frames are in
- * chronological order.
- */
-export function poseAt(frames: ClipFrame[], time: number): Pose | null {
-  if (frames.length === 0) return null;
+/** Index of the first frame at or after `time` (frames.length if none). */
+function firstFrameFrom(frames: ClipFrame[], time: number) {
   let low = 0;
-  let high = frames.length - 1;
+  let high = frames.length;
   while (low < high) {
     const mid = Math.floor((low + high) / 2);
     if (frames[mid].time < time) low = mid + 1;
     else high = mid;
   }
-  const after = frames[low];
-  const before = frames[low - 1];
-  if (!before || after.time <= time) return after.pose;
+  return low;
+}
+
+/**
+ * Pose at `time`, interpolated between the neighbouring frames. Detection runs slower than the
+ * video, so taking the nearest frame visibly lags behind fast movements. Frames are in
+ * chronological order. Null where no frame is near, e.g. parts of the skeleton not computed yet:
+ * better no skeleton than one from another moment.
+ */
+export function poseAt(frames: ClipFrame[], time: number): Pose | null {
+  const index = firstFrameFrom(frames, time);
+  const after = frames[index] as ClipFrame | undefined;
+  const before = frames[index - 1] as ClipFrame | undefined;
+  if (!before || !after || after.time - before.time > MAX_INTERPOLATION_GAP_MS) {
+    const nearest = [before, after]
+      .filter((frame) => frame !== undefined)
+      .reduce<ClipFrame | null>(
+        (best, frame) =>
+          !best || Math.abs(frame.time - time) < Math.abs(best.time - time) ? frame : best,
+        null,
+      );
+    return nearest && Math.abs(nearest.time - time) <= MAX_INTERPOLATION_GAP_MS / 2
+      ? nearest.pose
+      : null;
+  }
+  if (after.time === time) return after.pose;
 
   const gap = after.time - before.time;
-  if (gap > MAX_INTERPOLATION_GAP_MS) {
-    return time - before.time < after.time - time ? before.pose : after.pose;
-  }
   const u = (time - before.time) / gap;
   return before.pose.map((a, i) => {
     const b = after.pose[i];
@@ -84,6 +105,12 @@ export function poseAt(frames: ClipFrame[], time: number): Pose | null {
       visibility: Math.min(a.visibility ?? 1, b.visibility ?? 1),
     };
   });
+}
+
+/** A copy of `frames` with `frame` inserted in time order (skeleton frames arrive out of order). */
+export function insertFrame(frames: ClipFrame[], frame: ClipFrame): ClipFrame[] {
+  const index = firstFrameFrom(frames, frame.time);
+  return [...frames.slice(0, index), frame, ...frames.slice(index)];
 }
 
 /**

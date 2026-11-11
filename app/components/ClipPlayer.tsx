@@ -10,11 +10,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '~/components/ui/button';
+import { Progress } from '~/components/ui/progress';
 import { Slider } from '~/components/ui/slider';
 import { Toggle } from '~/components/ui/toggle';
 import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/clip';
 import { exportClip } from '~/lib/recording/export.client';
+import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
 
 /** One button cycles through these, to save space on phones. */
 const SPEEDS = [
@@ -32,6 +34,12 @@ const STEPS = [
 
 const CONTROLS_HIDE_MS = 3000;
 
+const SKELETON_TEXT: Record<SkeletonProgress['stage'], string> = {
+  download: 'Skelett-Modell wird geladen …',
+  compute: 'Skelett wird berechnet …',
+  failed: 'Skelett konnte nicht berechnet werden. Prüfe die Internetverbindung.',
+};
+
 function formatTime(ms: number) {
   const seconds = Math.max(0, ms) / 1000;
   const minutes = Math.floor(seconds / 60);
@@ -43,6 +51,8 @@ type Props = {
   aspectRatio: number;
   /** The list of recent clips, shown above the controls. */
   clipStrip: ReactNode;
+  /** While the skeleton is being computed; frames without one show no skeleton yet. */
+  skeletonProgress: SkeletonProgress | null;
   onLive: () => void;
   onDelete: () => void;
 };
@@ -51,7 +61,14 @@ type Props = {
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
  * Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDelete }: Props) {
+export default function ClipPlayer({
+  clip,
+  aspectRatio,
+  clipStrip,
+  skeletonProgress,
+  onLive,
+  onDelete,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Follows the video's own play/pause events, so the button never disagrees with it.
@@ -92,7 +109,7 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
         previousMs = time;
         setTimeMs(time);
         const surface = prepareCanvas(canvas);
-        const pose = skeleton ? poseAt(clip.frames, time) : null;
+        const pose = skeleton ? poseAt(clip.skeleton, time) : null;
         if (surface && pose) drawSkeleton(surface.ctx, pose, surface.width, surface.height);
       }
       frame = requestAnimationFrame(render);
@@ -159,6 +176,19 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
         }`}
       >
         {clipStrip}
+        {skeletonProgress && (
+          <div className="flex items-center gap-3 text-xs text-slate-300" role="status">
+            <span className="shrink-0">{SKELETON_TEXT[skeletonProgress.stage]}</span>
+            {skeletonProgress.stage !== 'failed' && (
+              <>
+                <Progress value={skeletonProgress.percent} className="h-1.5" />
+                <span className="w-10 shrink-0 text-right font-mono tabular-nums">
+                  {skeletonProgress.percent}&nbsp;%
+                </span>
+              </>
+            )}
+          </div>
+        )}
         <Slider
           aria-label="Zeitleiste"
           min={0}
