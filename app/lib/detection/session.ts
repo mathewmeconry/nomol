@@ -1,4 +1,4 @@
-import { bodySize, distance, hipCenter, scalePose, type Point, type Pose } from './pose';
+import { distance, hipCenter, scalePose, type Point, type Pose } from './pose';
 import { isStartSign } from './sign';
 import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
 
@@ -9,16 +9,16 @@ export const SIGN_HOLD_MS = 1000;
  * restarts when the sign has been gone for longer than this.
  */
 const SIGN_DROPOUT_MS = 250;
-/** How long the gymnast must stand still on the floor before the recording stops. */
-export const STILL_MS = 1000;
+/**
+ * Stop after the gymnast has only stood or walked (both feet on the floor) for this long since
+ * their last element. Short breaks within a routine stay in the recording; the replay trims the
+ * idle tail (`routineRange`).
+ */
+export const IDLE_MS = 6000;
 /** Stop when the tracked person has not been seen for this long (left the picture). */
 export const LOST_MS = 1500;
 /** Largest hip jump between frames (image heights) that still counts as the same person. */
 const MAX_JUMP = 0.15;
-/** Hip movement below this (relative to body size) counts as standing still. */
-const STILL_TOLERANCE = 0.06;
-/** Moving this far from the start position (relative to body size) counts as having started. */
-const MOVED_DISTANCE = 0.5;
 
 export type Frame = {
   time: number;
@@ -36,22 +36,19 @@ type Idle = { kind: 'idle'; signSince: number | null; signSeenAt: number | null 
 type Recording = {
   kind: 'recording';
   target: Point;
-  startHip: Point;
   lastSeen: number;
   /**
-   * False until the gymnast leaves the floor or moves away from where recording started.
-   * Without it, standing still right after the sign would stop the recording immediately.
+   * Last time the gymnast wasn't standing on both feet, i.e. did an element. Null until the
+   * first one, so waiting before the routine never stops the recording.
    */
-  active: boolean;
-  stillSince: number | null;
-  stillAt: Point | null;
+  lastElementAt: number | null;
 };
 
 export type SessionState = Idle | Recording;
 
 export type SessionEvent =
   | { type: 'start'; reason: 'sign' | 'button'; pose: Pose }
-  | { type: 'stop'; reason: 'still' | 'lost' };
+  | { type: 'stop'; reason: 'idle' | 'lost' };
 
 export type StepResult = {
   state: SessionState;
@@ -84,16 +81,7 @@ export function step(state: SessionState, frame: Frame): StepResult {
 }
 
 function startRecording(pose: Pose, time: number): Recording {
-  const hip = hipCenter(pose);
-  return {
-    kind: 'recording',
-    target: hip,
-    startHip: hip,
-    lastSeen: time,
-    active: false,
-    stillSince: null,
-    stillAt: null,
-  };
+  return { kind: 'recording', target: hipCenter(pose), lastSeen: time, lastElementAt: null };
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {
@@ -143,24 +131,13 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
   }
 
   const pose = nearest(candidates, state.target);
-  const hip = hipCenter(pose);
-  const size = bodySize(pose);
-  const onFloor = isOnFloor(pose, frame.zone);
-  const active = state.active || !onFloor || distance(hip, state.startHip) > MOVED_DISTANCE * size;
-
-  let stillSince: number | null = null;
-  let stillAt: Point | null = null;
-  if (active && onFloor) {
-    const moved = !state.stillAt || distance(hip, state.stillAt) > STILL_TOLERANCE * size;
-    stillSince = moved ? frame.time : state.stillSince;
-    stillAt = moved ? hip : state.stillAt;
-    if (stillSince !== null && frame.time - stillSince >= STILL_MS) {
-      return { state: initialSession, event: { type: 'stop', reason: 'still' }, target: pose };
-    }
+  const lastElementAt = isOnFloor(pose, frame.zone) ? state.lastElementAt : frame.time;
+  if (lastElementAt !== null && frame.time - lastElementAt >= IDLE_MS) {
+    return { state: initialSession, event: { type: 'stop', reason: 'idle' }, target: pose };
   }
 
   return {
-    state: { ...state, target: hip, lastSeen: frame.time, active, stillSince, stillAt },
+    state: { ...state, target: hipCenter(pose), lastSeen: frame.time, lastElementAt },
     event: null,
     target: pose,
   };

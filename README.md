@@ -34,7 +34,9 @@ points per frame, start zone, aspect ratio).
 1. Mount the tablet so the camera sees the whole apparatus, including the floor in front of it.
 2. Open the app and allow camera access. Install it to the home screen for full-screen mode.
 3. Tap **Startzone** and drag the area where gymnasts stand before they start. Its bottom edge
-   must sit on the floor: recordings stop when the gymnast stands still on that floor line.
+   must sit on the floor where the feet are: anything not standing on both feet counts as an
+   element. Recordings stop ~6 s after the last element (or when the gymnast leaves the picture),
+   and the replay loops just the routine.
 
 ## Scripts
 

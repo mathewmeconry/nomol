@@ -1,5 +1,5 @@
-import type { Pose } from '~/lib/detection/pose';
-import type { Zone } from '~/lib/detection/zone';
+import { scalePose, type Pose } from '~/lib/detection/pose';
+import { isOnFloor, scaleZone, type Zone } from '~/lib/detection/zone';
 
 /** Body points of the recorded person at a time (ms since the recording started). */
 export type ClipFrame = { time: number; pose: Pose };
@@ -12,12 +12,40 @@ export type Clip = {
   /** Measured by us: MediaRecorder WebM files often report an unknown duration. */
   durationMs: number;
   frames: ClipFrame[];
-  /** Still from the middle of the recording, as a data URL, for the clip list. */
+  /** Still from the middle of the routine, as a data URL, for the clip list. */
   thumbnail: string | null;
   /** Start zone and camera aspect ratio at recording time, so exports can be replayed. */
   zone: Zone;
   aspectRatio: number;
 };
+
+/** Shown before the first element, e.g. the run-up. */
+const ROUTINE_LEAD_MS = 1500;
+/** Shown after the last element: the landing and standing up. */
+const ROUTINE_TAIL_MS = 2000;
+
+/**
+ * The part of a clip worth replaying: from shortly before the first element to shortly after the
+ * last one, an element being any moment not standing on both feet. Cuts the wait before the
+ * routine and the idle time or walking away after it; breaks in between stay. The whole clip if
+ * no element was recognized (e.g. the floor line is drawn too low).
+ */
+export function routineRange(clip: Pick<Clip, 'frames' | 'zone' | 'aspectRatio' | 'durationMs'>): {
+  startMs: number;
+  endMs: number;
+} {
+  const zone = scaleZone(clip.zone, clip.aspectRatio);
+  const elements = clip.frames.filter(
+    (frame) => !isOnFloor(scalePose(frame.pose, clip.aspectRatio), zone),
+  );
+  const first = elements[0];
+  const last = elements[elements.length - 1];
+  if (!first || !last) return { startMs: 0, endMs: clip.durationMs };
+  return {
+    startMs: Math.max(0, first.time - ROUTINE_LEAD_MS),
+    endMs: Math.min(clip.durationMs, last.time + ROUTINE_TAIL_MS),
+  };
+}
 
 /** Fallback when a clip has too few frames to measure the camera's frame rate. */
 const DEFAULT_FRAME_MS = 1000 / 30;

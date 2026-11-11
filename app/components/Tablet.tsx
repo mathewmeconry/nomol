@@ -22,7 +22,7 @@ import type { Pose } from '~/lib/detection/pose';
 import { initialSession, step, type SessionState } from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawZone, prepareCanvas } from '~/lib/draw';
-import type { Clip, ClipFrame } from '~/lib/recording/clip';
+import { routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
 import { deleteClip, loadClips, saveClip } from '~/lib/recording/clip-store.client';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
@@ -35,7 +35,7 @@ const ARMED_TIMEOUT_MS = 20_000;
 /** Older clips are dropped to keep the tablet's memory in check. */
 const MAX_CLIPS = 8;
 /**
- * The clip's thumbnail should come from the middle of the recording, whose length isn't known
+ * The clip's thumbnail should come from the middle of the routine, whose timing isn't known
  * in advance, so candidate stills are grabbed this often and one is picked at the end.
  */
 const STILL_EVERY_MS = 500;
@@ -179,11 +179,11 @@ export default function Tablet() {
     activeRef.current = null;
     const blob = await active.recording.stop();
     const durationMs = time - active.startedAt;
+    const { startMs, endMs } = routineRange({ ...active, durationMs });
+    const target = (startMs + endMs) / 2;
     const middle = active.stills.reduce<(typeof active.stills)[number] | null>(
       (best, still) =>
-        !best || Math.abs(still.time - durationMs / 2) < Math.abs(best.time - durationMs / 2)
-          ? still
-          : best,
+        !best || Math.abs(still.time - target) < Math.abs(best.time - target) ? still : best,
       null,
     );
     const clip: Clip = {

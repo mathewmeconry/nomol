@@ -16,11 +16,15 @@ Requirements, as agreed with the owner:
 - **Nothing is recorded without a sign or button press.** No background recording.
 - **Following:** only the person who started is tracked; others in the picture are ignored and
   get no boxes.
-- **Stopping:** when the gymnast stands still with both feet on the floor or a landing mat (~1 s),
-  or leaves the picture. Hands don't count as feet: a handstand, resting still on an apparatus
-  (e.g. support on the Reck) or balancing on one leg must not stop it.
+- **Stopping:** when the gymnast leaves the picture, or after ~6 s of only standing or walking
+  (both feet on the floor or a landing mat) since their last element. Waiting before the routine
+  and short breaks between elements must not stop it. An element is anything but both feet on the
+  floor; hands don't count as feet (handstand, support on the Reck, balancing on one leg).
+- **Trimming:** the replay starts 1.5 s before the first element and loops up to 2 s after the
+  last one (`routineRange`), cutting the wait and the walk-away. The full video is kept, exported
+  and can still be scrubbed.
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
-  floor line used for the stop rule.
+  floor line used for the stop rule and trimming; it must be where the feet are.
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
   Chrome on Android usually lists only front and back; there a zoom button (e.g. "0,5×") reaches
   the ultra-wide lens if the phone allows zooming below 1×.

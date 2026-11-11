@@ -1,9 +1,9 @@
 import { makePose } from '~/tests/poses';
 import { LM, type Pose } from './pose';
 import {
+  IDLE_MS,
   LOST_MS,
   SIGN_HOLD_MS,
-  STILL_MS,
   initialSession,
   step,
   type SessionEvent,
@@ -13,6 +13,8 @@ import type { Zone } from './zone';
 
 const zone: Zone = { left: 0.3, top: 0.3, right: 0.6, bottom: 0.9 };
 const FPS = 30;
+/** Long enough that an idle stop would have happened. */
+const LONG = IDLE_MS + 4000;
 
 type Scene = (time: number) => Pose[];
 
@@ -127,19 +129,37 @@ describe('stopping', () => {
     return t < 1500 ? liftAt(t) : 0.3 * Math.max(0, 1 - (t - 1500) / 500);
   }
 
-  it('keeps recording while the gymnast stands still right after starting', () => {
-    const { events } = run(() => [makePose({ x: 0.45, feetY: 0.9 })], 3000, {
+  it('keeps recording while the gymnast waits before the routine', () => {
+    const { events } = run(() => [makePose({ x: 0.45, feetY: 0.9 })], LONG, {
       from: recording(0.45),
     });
     expect(events).toHaveLength(0);
   });
 
-  it('stops when the gymnast stands still on the floor after the routine', () => {
+  it('stops when the gymnast only stands after the routine', () => {
     const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, lift: upAndDown(t) })];
-    const { events } = run(scene, 4000, { from: recording(0.45) });
+    const { events } = run(scene, LONG, { from: recording(0.45) });
     expect(events).toHaveLength(1);
-    expect(events[0].event).toEqual({ type: 'stop', reason: 'still' });
-    expect(events[0].time).toBeGreaterThanOrEqual(2000 + STILL_MS);
+    expect(events[0].event).toEqual({ type: 'stop', reason: 'idle' });
+    // Coming down between 1.5 s and 2 s.
+    expect(events[0].time).toBeGreaterThanOrEqual(1500 + IDLE_MS);
+  });
+
+  it('stops when the gymnast walks around after the routine', () => {
+    const scene: Scene = (t) => [
+      makePose({ x: t < 2000 ? 0.45 : 0.45 + (t - 2000) / 50000, feetY: 0.9, lift: upAndDown(t) }),
+    ];
+    const { events } = run(scene, LONG, { from: recording(0.45) });
+    expect(events[0]?.event).toEqual({ type: 'stop', reason: 'idle' });
+  });
+
+  it('keeps recording through a short break between elements', () => {
+    // Element, 4 s standing, element again.
+    const scene: Scene = (t) => [
+      makePose({ x: 0.45, feetY: 0.9, lift: t < 6000 ? upAndDown(t) : upAndDown(t - 6000) }),
+    ];
+    const { events } = run(scene, 9000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
   });
 
   it('stops on a landing mat slightly above the floor line', () => {
@@ -147,13 +167,13 @@ describe('stopping', () => {
     const scene: Scene = (t) => [
       makePose({ x: 0.45, feetY: 0.9, lift: Math.max(upAndDown(t), t > 1500 ? 0.03 : 0) }),
     ];
-    const { events } = run(scene, 4000, { from: recording(0.45) });
-    expect(events[0]?.event).toEqual({ type: 'stop', reason: 'still' });
+    const { events } = run(scene, LONG, { from: recording(0.45) });
+    expect(events[0]?.event).toEqual({ type: 'stop', reason: 'idle' });
   });
 
   it('keeps recording while the gymnast rests still in support on the bar', () => {
     const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, lift: liftAt(t) })];
-    const { events } = run(scene, 5000, { from: recording(0.45) });
+    const { events } = run(scene, LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 
@@ -168,7 +188,7 @@ describe('stopping', () => {
       pose[LM.leftAnkle] = { ...pose[LM.leftAnkle], x: 0.6, y: 0.86 };
       return pose;
     }
-    const { events } = run((t) => [legUp(t)], 5000, { from: recording(0.45) });
+    const { events } = run((t) => [legUp(t)], LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 
@@ -180,7 +200,7 @@ describe('stopping', () => {
       pose[LM.leftAnkle] = { ...pose[LM.leftAnkle], y: pose[LM.leftKnee].y };
       return pose;
     }
-    const { events } = run((t) => [footUp(t)], 5000, { from: recording(0.45) });
+    const { events } = run((t) => [footUp(t)], LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 
@@ -192,14 +212,7 @@ describe('stopping', () => {
       const armsUp = makePose({ x: 0.45, feetY: 0.9, kind: 'armsUp' });
       return armsUp.map((p) => ({ ...p, y: 0.9 + 0.48 - p.y }));
     }
-    const { events } = run((t) => [handstand(t)], 5000, { from: recording(0.45) });
-    expect(events).toHaveLength(0);
-  });
-
-  it('keeps recording while the gymnast moves on the floor', () => {
-    // Walks across the floor: active, but never still.
-    const scene: Scene = (t) => [makePose({ x: 0.45 + t / 10000, feetY: 0.9 })];
-    const { events } = run(scene, 3000, { from: recording(0.45) });
+    const { events } = run((t) => [handstand(t)], LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 
@@ -217,7 +230,7 @@ describe('stopping', () => {
       makePose({ x: 0.75, feetY: 0.9 }),
       makePose({ x: 0.45, feetY: 0.9, lift: liftAt(t) }),
     ];
-    const { events } = run(scene, 4000, { from: recording(0.45) });
+    const { events } = run(scene, LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 });

@@ -1,4 +1,5 @@
-import { frameDuration, poseAt, type Clip, type ClipFrame } from './clip';
+import { makePose } from '~/tests/poses';
+import { frameDuration, poseAt, routineRange, type Clip, type ClipFrame } from './clip';
 
 /** One-landmark poses whose x equals the frame time, so interpolation is easy to read. */
 const frames: ClipFrame[] = [0, 40, 80, 400].map((time) => ({
@@ -59,5 +60,30 @@ describe('frameDuration', () => {
 
   it('falls back to 30 fps without enough frames', () => {
     expect(frameDuration(clip({ frames: [] }))).toBeCloseTo(1000 / 30);
+  });
+});
+
+describe('routineRange', () => {
+  /** Stands until 4 s, does elements from 4 s to 8 s, then stands until 20 s. */
+  const routine = clip({
+    durationMs: 20_000,
+    zone: { left: 0.3, top: 0.3, right: 0.6, bottom: 0.9 },
+    aspectRatio: 1,
+    frames: Array.from({ length: 200 }, (_, i) => {
+      const time = i * 100;
+      return {
+        time,
+        pose: makePose({ x: 0.45, feetY: 0.9, lift: time >= 4000 && time <= 8000 ? 0.3 : 0 }),
+      };
+    }),
+  });
+
+  it('cuts the wait before and the idle time after the routine', () => {
+    expect(routineRange(routine)).toEqual({ startMs: 2500, endMs: 10_000 });
+  });
+
+  it('keeps the whole clip when no element was recognized', () => {
+    const standing = clip({ ...routine, frames: routine.frames.slice(0, 30) });
+    expect(routineRange(standing)).toEqual({ startMs: 0, endMs: 20_000 });
   });
 });

@@ -13,7 +13,7 @@ import { Button } from '~/components/ui/button';
 import { Slider } from '~/components/ui/slider';
 import { Toggle } from '~/components/ui/toggle';
 import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
-import { frameDuration, poseAt, type Clip } from '~/lib/recording/clip';
+import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/clip';
 import { exportClip } from '~/lib/recording/export.client';
 
 /** One button cycles through these, to save space on phones. */
@@ -77,12 +77,19 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
   }, [playing, controlsVisible, lastTouch]);
 
   useEffect(() => {
+    const { startMs, endMs } = routineRange(clip);
     let frame = 0;
+    let previousMs = 0;
     function render() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (video && canvas) {
+        // Loops the routine only. Seeking outside it stays possible, e.g. if the trim was wrong.
+        if (!video.paused && previousMs < endMs && video.currentTime * 1000 >= endMs) {
+          video.currentTime = startMs / 1000;
+        }
         const time = video.currentTime * 1000;
+        previousMs = time;
         setTimeMs(time);
         const surface = prepareCanvas(canvas);
         const pose = skeleton ? poseAt(clip.frames, time) : null;
@@ -130,9 +137,16 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
           src={clip.url}
           className="absolute inset-0 h-full w-full"
           autoPlay
-          loop
           muted
           playsInline
+          onLoadedMetadata={(event) => {
+            event.currentTarget.currentTime = routineRange(clip).startMs / 1000;
+          }}
+          // Instead of the loop attribute, which would restart at 0 rather than the routine.
+          onEnded={(event) => {
+            event.currentTarget.currentTime = routineRange(clip).startMs / 1000;
+            void event.currentTarget.play();
+          }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         />
