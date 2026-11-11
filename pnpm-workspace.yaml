@@ -1,3 +1,6 @@
+allowBuilds:
+  msw: false
+
 # eslint-plugin-react and eslint-plugin-jsx-a11y don't declare ESLint 10 support yet;
 # eslint.config.mjs wraps them with @eslint/compat's fixupPluginRules.
 peerDependencyRules:

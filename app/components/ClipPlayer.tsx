@@ -1,4 +1,17 @@
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Pause,
+  Play,
+  Share,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '~/components/ui/button';
+import { Slider } from '~/components/ui/slider';
+import { Toggle } from '~/components/ui/toggle';
 import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, type Clip } from '~/lib/recording/clip';
 import { exportClip } from '~/lib/recording/export.client';
@@ -11,10 +24,10 @@ const SPEEDS = [
 ];
 
 const STEPS = [
-  { frames: -5, label: '«', name: '5 Bilder zurück' },
-  { frames: -1, label: '‹', name: '1 Bild zurück' },
-  { frames: 1, label: '›', name: '1 Bild vor' },
-  { frames: 5, label: '»', name: '5 Bilder vor' },
+  { frames: -5, Icon: ChevronsLeft, name: '5 Bilder zurück' },
+  { frames: -1, Icon: ChevronLeft, name: '1 Bild zurück' },
+  { frames: 1, Icon: ChevronRight, name: '1 Bild vor' },
+  { frames: 5, Icon: ChevronsRight, name: '5 Bilder vor' },
 ];
 
 const CONTROLS_HIDE_MS = 3000;
@@ -33,9 +46,6 @@ type Props = {
   onLive: () => void;
   onDelete: () => void;
 };
-
-const button =
-  'h-9 min-w-9 rounded-lg bg-white/10 px-2.5 text-sm font-semibold backdrop-blur hover:bg-white/20 disabled:opacity-30';
 
 /**
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
@@ -135,59 +145,58 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
         }`}
       >
         {clipStrip}
-        <input
-          type="range"
+        <Slider
           aria-label="Zeitleiste"
           min={0}
           max={clip.durationMs}
-          step="any"
-          value={Math.min(timeMs, clip.durationMs)}
-          onChange={(event) => seek(Number(event.target.value))}
-          className="h-6 w-full cursor-pointer accent-sky-400"
+          step={1}
+          value={[Math.min(timeMs, clip.durationMs)]}
+          onValueChange={([ms]) => seek(ms)}
+          className="h-6 cursor-pointer"
         />
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
+          <Button
+            size="icon"
             aria-label={playing ? 'Pause' : 'Abspielen'}
             onClick={togglePlay}
-            className="h-9 w-12 rounded-lg bg-white font-semibold text-slate-950"
+            className="w-12"
           >
-            {playing ? '❚❚' : '▶'}
-          </button>
+            {playing ? <Pause /> : <Play />}
+          </Button>
           <div className="flex gap-1" role="group" aria-label="Bild für Bild">
-            {STEPS.map((step) => (
-              <button
-                key={step.frames}
-                type="button"
-                aria-label={step.name}
-                onClick={() => stepFrames(step.frames)}
-                className={button}
+            {STEPS.map(({ frames, Icon, name }) => (
+              <Button
+                key={frames}
+                variant="secondary"
+                size="icon"
+                aria-label={name}
+                onClick={() => stepFrames(frames)}
               >
-                {step.label}
-              </button>
+                <Icon />
+              </Button>
             ))}
           </div>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             aria-label="Geschwindigkeit"
             onClick={() =>
               setSpeed(
                 SPEEDS[(SPEEDS.findIndex((s) => s.value === speed) + 1) % SPEEDS.length].value,
               )
             }
-            className={`${button} w-12 font-mono`}
+            className="w-12 font-mono"
           >
             {SPEEDS.find((s) => s.value === speed)?.label}
-          </button>
-          <button
-            type="button"
-            aria-pressed={skeleton}
-            onClick={() => setSkeleton(!skeleton)}
-            className={`${button} aria-pressed:text-sky-300`}
+          </Button>
+          <Toggle
+            variant="outline"
+            pressed={skeleton}
+            onPressedChange={setSkeleton}
+            className="data-[state=on]:text-sky-300"
           >
             Skelett
-          </button>
+          </Toggle>
           {skeleton && (
             <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
               {(
@@ -211,8 +220,8 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
           </span>
 
           <span className="flex-1" />
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={exporting}
             onClick={() => {
               setExporting(true);
@@ -220,21 +229,27 @@ export default function ClipPlayer({ clip, aspectRatio, clipStrip, onLive, onDel
                 .catch((_error: unknown) => setExportFailed(true))
                 .finally(() => setExporting(false));
             }}
-            className={button}
           >
-            {exportFailed ? 'Export fehlgeschlagen' : exporting ? 'Export …' : 'Export'}
-          </button>
+            <Share />
+            {/* Icon only on narrow phones, so the controls fit in two rows. */}
+            <span className={exportFailed ? '' : 'max-sm:sr-only'}>
+              {exportFailed ? 'Export fehlgeschlagen' : exporting ? 'Export …' : 'Export'}
+            </span>
+          </Button>
           {/* Two taps, because the clip is gone for good. */}
-          <button
-            type="button"
+          <Button
+            variant={confirmingDelete ? 'destructive' : 'secondary'}
             onClick={() => (confirmingDelete ? onDelete() : setConfirmingDelete(true))}
-            className={`${button} ${confirmingDelete ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
+            className={confirmingDelete ? '' : 'text-red-300'}
           >
-            {confirmingDelete ? 'Wirklich löschen?' : 'Löschen'}
-          </button>
-          <button type="button" onClick={onLive} className={`${button} text-emerald-300`}>
+            <Trash2 />
+            <span className={confirmingDelete ? '' : 'max-sm:sr-only'}>
+              {confirmingDelete ? 'Wirklich löschen?' : 'Löschen'}
+            </span>
+          </Button>
+          <Button variant="secondary" onClick={onLive} className="text-emerald-300">
             Live
-          </button>
+          </Button>
         </div>
       </div>
     </div>

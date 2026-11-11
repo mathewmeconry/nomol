@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
-  "entry": ["public/sw.js"]
+  "entry": ["public/sw.js"],
+  "ignoreIssues": { "app/components/ui/*": ["exports"] }
 }

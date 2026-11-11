@@ -1,4 +1,5 @@
 import { useState, type PointerEvent } from 'react';
+import { Button } from '~/components/ui/button';
 import { normalizeZone, type Zone } from '~/lib/detection/zone';
 import type { Point } from '~/lib/detection/pose';
 import { DEFAULT_ZONE } from '~/lib/zone-storage';
@@ -60,28 +61,15 @@ export default function ZoneEditor({ zone, onSave, onCancel }: Props) {
             ? 'Zu klein. Zieh einen grösseren Bereich auf.'
             : 'Zieh die Startzone mit dem Finger auf. Die untere Kante ist der Boden, auf dem die Turnerinnen stehen.'}
         </p>
-        <button
-          type="button"
-          onClick={() => setDraft(DEFAULT_ZONE)}
-          className="h-11 rounded-lg border border-slate-700 px-4 font-semibold"
-        >
+        <Button variant="outline" size="lg" onClick={() => setDraft(DEFAULT_ZONE)}>
           Standard
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-11 rounded-lg border border-slate-700 px-4 font-semibold"
-        >
+        </Button>
+        <Button variant="outline" size="lg" onClick={onCancel}>
           Abbrechen
-        </button>
-        <button
-          type="button"
-          disabled={tooSmall}
-          onClick={() => onSave(draft)}
-          className="h-11 rounded-lg bg-sky-400 px-4 font-semibold text-slate-950 disabled:opacity-40"
-        >
+        </Button>
+        <Button size="lg" disabled={tooSmall} onClick={() => onSave(draft)}>
           Speichern
-        </button>
+        </Button>
       </div>
     </>
   );

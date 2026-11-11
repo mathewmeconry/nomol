@@ -1,6 +1,16 @@
+import { Camera, Circle, SquareDashed, Volume2 } from 'lucide-react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
+import { Button } from '~/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select';
+import { Toggle } from '~/components/ui/toggle';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useCameras from '~/hooks/use-cameras';
@@ -17,6 +27,7 @@ import { deleteClip, loadClips, saveClip } from '~/lib/recording/clip-store.clie
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
+import { cn } from '~/lib/utils';
 import { DEFAULT_ZONE, loadZone, saveZone } from '~/lib/zone-storage';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
@@ -55,8 +66,9 @@ type ActiveRecording = {
   aspectRatio: number;
 };
 
+/** Controls float over the camera image, so they get a dark, blurred backing. */
 const floating =
-  'rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold backdrop-blur disabled:opacity-40 sm:px-4 sm:py-2 sm:text-sm';
+  'rounded-full bg-black/60 font-semibold backdrop-blur hover:bg-black/75 data-[state=on]:bg-black/75 data-[state=on]:text-sky-300';
 
 export default function Tablet() {
   // Not rendered into the HTML, so reading local storage on the first client render is safe.
@@ -387,67 +399,91 @@ export default function Tablet() {
       {/* One wrapping row, so the two groups stack instead of overlapping on narrow phones. */}
       <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2 *:pointer-events-auto">
         <div className="flex items-center gap-2">
-          <span className={`${floating} inline-flex items-center gap-2 ${STATUS_STYLE[status]}`}>
+          <span
+            className={cn(
+              floating,
+              'inline-flex h-8 items-center gap-2 px-3 text-sm',
+              STATUS_STYLE[status],
+            )}
+          >
             <span aria-hidden className="size-2 rounded-full bg-current" />
             {STATUS_TEXT[status]}
           </span>
           {!soundReady && (
-            <button type="button" className={`${floating} text-slate-300`}>
+            <Button variant="ghost" size="sm" className={floating}>
+              <Volume2 />
               Ton einschalten
-            </button>
+            </Button>
           )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           {cameras.length > 1 && (
-            <select
-              aria-label="Kamera"
+            <Select
               value={activeCameraId ?? ''}
               disabled={status === 'recording'}
-              onChange={(event) => {
-                saveCameraId(event.target.value);
-                setCameraId(event.target.value);
+              onValueChange={(deviceId) => {
+                saveCameraId(deviceId);
+                setCameraId(deviceId);
               }}
-              className={`${floating} max-w-36 text-slate-300 sm:max-w-48`}
             >
-              {cameras.map((device, index) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Kamera ${index + 1}`}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                size="sm"
+                aria-label="Kamera"
+                className={cn(floating, 'max-w-40 border-0 sm:max-w-52')}
+              >
+                <Camera />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {cameras.map((device, index) => (
+                  <SelectItem key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Kamera ${index + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           {wideAngle.zoom !== undefined && (
-            <button
-              type="button"
-              aria-pressed={wideAngle.wide}
+            <Toggle
+              size="sm"
+              pressed={wideAngle.wide}
               disabled={status === 'recording'}
-              onClick={wideAngle.toggle}
-              className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
+              onPressedChange={wideAngle.toggle}
+              className={floating}
             >
               {`${wideAngle.zoom.toLocaleString('de-CH')}×`}
-            </button>
+            </Toggle>
           )}
-          <button
-            type="button"
-            aria-pressed={editingZone}
+          <Toggle
+            size="sm"
+            pressed={editingZone}
             disabled={status === 'recording'}
-            onClick={() => {
-              setEditingZone(!editingZone);
+            onPressedChange={(pressed) => {
+              setEditingZone(pressed);
               setView('live');
             }}
-            className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
+            className={floating}
           >
+            <SquareDashed />
             Startzone
-          </button>
-          <button
-            type="button"
+          </Toggle>
+          <Button
+            size="sm"
+            variant={armedAt === null ? 'destructive' : 'ghost'}
             disabled={status === 'recording' || !detector || editingZone}
             onClick={() => setArmedAt(armedAt === null ? Date.now() : null)}
-            className={`${floating} ${armedAt === null ? 'bg-red-500/90 text-white' : 'text-red-300'}`}
+            className={cn('rounded-full', armedAt !== null && floating)}
           >
-            {armedAt === null ? '● Aufnahme starten' : 'Abbrechen'}
-          </button>
+            {armedAt === null ? (
+              <>
+                <Circle className="fill-current" />
+                Aufnahme starten
+              </>
+            ) : (
+              'Abbrechen'
+            )}
+          </Button>
         </div>
       </div>
 

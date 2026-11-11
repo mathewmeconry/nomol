@@ -45,7 +45,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - React Router 8 (framework mode, SPA: `ssr: false`), React 19, Vite, TypeScript strict. Built
   as a static site and deployed to GitHub Pages under `/nomol/` (`BASE_PATH`); use
   `import.meta.env.BASE_URL` for links to files in `public/`.
-- Tailwind CSS v4
+- Tailwind CSS v4, shadcn/ui (new-york, Radix, lucide icons) in `app/components/ui/` — add
+  components with `pnpm exec shadcn add <name>`; `cn` lives in `~/lib/utils`. Always dark
+  (`<html class="dark">`); controls over the video use the `floating` style in `Tablet.tsx`.
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
