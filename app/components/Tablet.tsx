@@ -21,7 +21,7 @@ import type { PoseDetector } from '~/lib/detection/pose-detector.client';
 import type { Pose } from '~/lib/detection/pose';
 import { initialSession, step, type SessionState } from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
-import { drawPersonBox, drawZone, prepareCanvas } from '~/lib/draw';
+import { drawPersonBox, drawStartSign, drawZone, prepareCanvas } from '~/lib/draw';
 import { routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
 import { deleteClip, loadClips, saveClip } from '~/lib/recording/clip-store.client';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
@@ -270,7 +270,8 @@ export default function Tablet() {
     const surface = canvas && prepareCanvas(canvas);
     if (!surface) return;
     const { ctx, width, height } = surface;
-    if (!editingZone) drawZone(ctx, zone, width, height);
+    drawZone(ctx, zone, width, height);
+    if (!activeRef.current) drawStartSign(ctx, zone, width, height, performance.now());
     if (activeRef.current && result.target) {
       drawPersonBox(ctx, result.target, width, height, '#ff6b70', 'Aufnahme');
     } else if (!activeRef.current) {
@@ -281,9 +282,11 @@ export default function Tablet() {
   });
 
   useEffect(() => {
-    if (!detector || camera.status !== 'ready') return;
+    // Paused while the coach draws the zone, so nobody starts a recording in the meantime.
+    if (!detector || camera.status !== 'ready' || editingZone) return;
     const poseDetector = detector;
     const video = videoRef.current;
+    const overlay = overlayRef.current;
     if (!video) return;
     let handle = 0;
     let lastTime = -Infinity;
@@ -307,8 +310,14 @@ export default function Tablet() {
       handle = video!.requestVideoFrameCallback(onVideoFrame);
     }
     handle = video.requestVideoFrameCallback(onVideoFrame);
-    return () => video.cancelVideoFrameCallback(handle);
-  }, [detector, camera.status]);
+    return () => {
+      video.cancelVideoFrameCallback(handle);
+      // Stopping only happens outside a recording (the zone button is disabled during one), so
+      // a half-held sign can be dropped, and the last boxes would otherwise stay on screen.
+      sessionRef.current = initialSession;
+      if (overlay) prepareCanvas(overlay);
+    };
+  }, [detector, camera.status, editingZone]);
 
   const loading =
     camera.status === 'error'
@@ -481,6 +490,10 @@ export default function Tablet() {
             onPressedChange={(pressed) => {
               setEditingZone(pressed);
               setView('live');
+              if (pressed) {
+                setArmedAt(null);
+                setStatus('idle');
+              }
             }}
             className={floating}
           >

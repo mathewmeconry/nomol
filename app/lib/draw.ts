@@ -109,51 +109,90 @@ export function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, w: number, h
   ctx.fillStyle = 'rgba(60, 211, 176, 0.95)';
   ctx.textBaseline = 'bottom';
   ctx.fillText('STARTZONE', x + 4, y - 4);
+}
 
-  // The start sign, in the top-left corner so it doesn't cover whoever stands in the zone.
-  const size = Math.min(Math.max((zone.bottom - zone.top) * h * 0.3, 40), 110);
-  const pad = size * 0.15;
-  if (
-    size * 0.6 + 2 * pad <= (zone.right - zone.left) * w &&
-    size * 1.2 + 2 * pad <= (zone.bottom - zone.top) * h
-  ) {
-    drawStartSign(ctx, x + pad + size * 0.3, y + pad + size * 1.2, size);
-  }
+/** One loop of the start-sign animation: arms down, raise, hold crossed, lower. */
+const SIGN_LOOP_MS = 3200;
+
+/**
+ * Elbow and wrist of the figure's right arm (x from the body's middle, y up from the feet, in
+ * body heights). Crossed: elbows beside the head, forearms crossing near their middle above it.
+ * The arms move straight between the two, in front of the body, so the figure stays narrow.
+ */
+const ARMS_DOWN = { elbow: { x: 0.14, y: 0.6 }, wrist: { x: 0.16, y: 0.36 } };
+const ARMS_CROSSED = { elbow: { x: 0.13, y: 0.96 }, wrist: { x: -0.1, y: 1.1 } };
+
+/** How far the arms are raised (0 down, 1 crossed) at `timeMs`, eased. */
+function raised(timeMs: number) {
+  const t = timeMs % SIGN_LOOP_MS;
+  const u = t < 600 ? 0 : t < 1300 ? (t - 600) / 700 : t < 2800 ? 1 : 1 - (t - 2800) / 400;
+  return u * u * (3 - 2 * u);
 }
 
 /**
- * Stick figure showing the start sign: upper arms out and up, forearms crossing in an X above
- * the head. Stands at (x, feetY); `size` is roughly its height without the arms.
+ * Faint stick figure standing in the middle of the start zone, showing the start sign: arms
+ * raised until the forearms cross in an X just above the head. Animated by `timeMs`.
  */
-function drawStartSign(ctx: CanvasRenderingContext2D, x: number, feetY: number, size: number) {
-  const at = (dx: number, dy: number): [number, number] => [x + dx * size, feetY - dy * size];
+export function drawStartSign(
+  ctx: CanvasRenderingContext2D,
+  zone: Zone,
+  w: number,
+  h: number,
+  timeMs: number,
+) {
+  const zoneWidth = (zone.right - zone.left) * w;
+  const zoneHeight = (zone.bottom - zone.top) * h;
+  // Height of the body; raised arms add ~12 % on top, the figure is never wider than ~0.35×.
+  const size = Math.min((zoneHeight * 0.92) / 1.12, (zoneWidth * 0.9) / 0.35);
+  if (size < 30) return;
+  const centerX = ((zone.left + zone.right) / 2) * w;
+  const feetY = zone.bottom * h - zoneHeight * 0.02;
+  const at = (dx: number, dy: number): [number, number] => [centerX + dx * size, feetY - dy * size];
+
+  const u = raised(timeMs);
+  const between = (from: number, to: number) => from + (to - from) * u;
+  /** Shoulder → elbow → wrist; `side` 1 for the image right, -1 mirrors it. */
+  function arm(side: 1 | -1): [number, number][] {
+    const { elbow: down, wrist: downWrist } = ARMS_DOWN;
+    const { elbow: up, wrist: upWrist } = ARMS_CROSSED;
+    return [
+      at(0.11 * side, 0.78),
+      at(between(down.x, up.x) * side, between(down.y, up.y)),
+      at(between(downWrist.x, upWrist.x) * side, between(downWrist.y, upWrist.y)),
+    ];
+  }
+
   const strokes: [number, number][][] = [
-    [at(-0.12, 0), at(0, 0.4), at(0.12, 0)], // legs
-    [at(0, 0.4), at(0, 0.72)], // body
-    [at(-0.27, 0.9), at(-0.13, 0.68), at(0.13, 0.68), at(0.27, 0.9)], // upper arms, shoulders
-    [at(-0.27, 0.9), at(0.12, 1.16)], // forearms
-    [at(0.27, 0.9), at(-0.12, 1.16)],
+    [at(-0.1, 0), at(-0.06, 0.25), at(0, 0.48), at(0.06, 0.25), at(0.1, 0)], // legs
+    [at(0, 0.48), at(0, 0.8)], // body
+    [at(-0.11, 0.78), at(0.11, 0.78)], // shoulders
+    arm(1),
+    arm(-1),
   ];
-  const head = at(0, 0.8);
-  const width = Math.max(2.5, size * 0.055);
+  // One path, stroked once: separate translucent strokes would stack up where they overlap and
+  // show the joints as darker blobs.
+  const figure = new Path2D();
+  for (const points of strokes) {
+    figure.moveTo(...points[0]);
+    for (const point of points.slice(1)) figure.lineTo(...point);
+  }
+  const [headX, headY] = at(0, 0.88);
+  const headRadius = size * 0.07;
+  figure.moveTo(headX + headRadius, headY);
+  figure.arc(headX, headY, headRadius, 0, Math.PI * 2);
+
+  const width = Math.max(2, size * 0.018);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Dark outline first, so the figure stays readable on any background.
+  // Faint, so the gymnast standing in the zone stays visible through it; a light dark outline
+  // keeps it readable on bright backgrounds.
   for (const [color, lineWidth] of [
-    ['rgba(0, 0, 0, 0.6)', width + 3],
-    ['rgba(60, 211, 176, 1)', width],
+    ['rgba(0, 0, 0, 0.12)', width + 3],
+    ['rgba(60, 211, 176, 0.35)', width],
   ] as const) {
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
-    for (const points of strokes) {
-      ctx.beginPath();
-      ctx.moveTo(...points[0]);
-      for (const point of points.slice(1)) ctx.lineTo(...point);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(...head, size * 0.075, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.stroke(figure);
   }
 }
 
