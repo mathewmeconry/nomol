@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
 import { Button } from '~/components/ui/button';
+import { Progress } from '~/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -92,6 +93,8 @@ export default function Tablet() {
 
   const [detector, setDetector] = useState<PoseDetector | null>(null);
   const [detectorError, setDetectorError] = useState(false);
+  /** Download progress of the detection model in percent; null until it is known. */
+  const [modelProgress, setModelProgress] = useState<number | null>(null);
   // Local storage only exists in the browser. The zone is never rendered into the HTML, so
   // reading it during the first client render causes no hydration mismatch.
   const [zone, setZone] = useState<Zone>(() =>
@@ -120,7 +123,7 @@ export default function Tablet() {
     let created: PoseDetector | null = null;
     let cancelled = false;
     import('~/lib/detection/pose-detector.client')
-      .then((module) => module.createPoseDetector())
+      .then((module) => module.createPoseDetector(setModelProgress))
       .then((result) => {
         if (cancelled) return result.close();
         created = result;
@@ -327,8 +330,12 @@ export default function Tablet() {
         : camera.status === 'starting'
           ? 'Kamera startet …'
           : !detector
-            ? 'Erkennung lädt …'
+            ? modelProgress === null || modelProgress === 100
+              ? 'Erkennung startet …'
+              : 'Erkennung wird geladen …'
             : null;
+  // Only the first visit downloads the model (~30 MB); after that it comes from the cache.
+  const downloading = !detector && !detectorError && modelProgress !== null && modelProgress < 100;
 
   const clipStrip = (
     <ClipStrip
@@ -537,8 +544,16 @@ export default function Tablet() {
       )}
 
       {loading && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-6">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/70 p-6">
           <p className="max-w-md text-center text-lg">{loading}</p>
+          {downloading && (
+            <div className="flex w-full max-w-xs items-center gap-3">
+              <Progress value={modelProgress} aria-label="Download der Erkennung" />
+              <span className="w-12 shrink-0 text-right font-mono text-sm text-slate-300 tabular-nums">
+                {modelProgress}&nbsp;%
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
