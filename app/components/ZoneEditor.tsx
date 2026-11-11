@@ -2,6 +2,7 @@ import { useState, type PointerEvent } from 'react';
 import { Button } from '~/components/ui/button';
 import { normalizeZone, type Zone } from '~/lib/detection/zone';
 import type { Point } from '~/lib/detection/pose';
+import { cn } from '~/lib/utils';
 import { DEFAULT_ZONE } from '~/lib/zone-storage';
 
 /** Smaller than about one body width is almost certainly a slip of the finger. */
@@ -45,29 +46,43 @@ export default function ZoneEditor({ zone, onSave, onCancel }: Props) {
         onPointerUp={() => setAnchor(null)}
       >
         <div
-          className="absolute border-2 border-sky-300 bg-sky-400/15"
+          className="absolute border-2 border-b-4 border-sky-300 bg-sky-400/15"
           style={{
             left: `${draft.left * 100}%`,
             top: `${draft.top * 100}%`,
             width: `${(draft.right - draft.left) * 100}%`,
             height: `${(draft.bottom - draft.top) * 100}%`,
           }}
-        />
+        >
+          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full rounded bg-sky-300 px-1.5 text-xs font-semibold text-slate-950">
+            Boden
+          </span>
+        </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-3 bg-slate-900/95 px-4 py-3">
-        <p className="min-w-48 flex-1 text-sm text-slate-300">
+      {/*
+        Anchored to the screen, not the picture: in portrait it sits in the empty space around the
+        video. It takes the side away from the floor line and steps aside while drawing.
+      */}
+      <div
+        className={cn(
+          'fixed inset-x-3 z-30 flex flex-wrap items-center gap-2 rounded-xl bg-slate-900/85 px-3 py-2 backdrop-blur transition-opacity select-none',
+          draft.bottom > 0.5 ? 'top-3' : 'bottom-3',
+          anchor && 'pointer-events-none opacity-0',
+        )}
+      >
+        <p className="min-w-40 flex-1 text-sm text-slate-300">
           {tooSmall
             ? 'Zu klein. Zieh einen grösseren Bereich auf.'
-            : 'Zieh die Startzone mit dem Finger auf. Die untere Kante ist der Boden, auf dem die Turnerinnen stehen.'}
+            : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
         </p>
-        <Button variant="outline" size="lg" onClick={() => setDraft(DEFAULT_ZONE)}>
+        <Button variant="outline" onClick={() => setDraft(DEFAULT_ZONE)}>
           Standard
         </Button>
-        <Button variant="outline" size="lg" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel}>
           Abbrechen
         </Button>
-        <Button size="lg" disabled={tooSmall} onClick={() => onSave(draft)}>
+        <Button disabled={tooSmall} onClick={() => onSave(draft)}>
           Speichern
         </Button>
       </div>

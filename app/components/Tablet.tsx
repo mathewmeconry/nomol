@@ -407,8 +407,16 @@ export default function Tablet() {
         </div>
       </div>
 
-      {/* One wrapping row, so the two groups stack instead of overlapping on narrow phones. */}
-      <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2 *:pointer-events-auto">
+      {/*
+        One wrapping row, so the two groups stack instead of overlapping on narrow phones. Hidden
+        while drawing the zone, whose own bar may need the top.
+      */}
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2 *:pointer-events-auto',
+          editingZone && 'hidden',
+        )}
+      >
         <div className="flex items-center gap-2">
           <span
             className={cn(
