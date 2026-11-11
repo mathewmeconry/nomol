@@ -16,9 +16,9 @@ Requirements, as agreed with the owner:
 - **Nothing is recorded without a sign or button press.** No background recording.
 - **Following:** only the person who started is tracked; others in the picture are ignored and
   get no boxes.
-- **Stopping:** when the gymnast stands still on the floor or a landing mat (~1 s), or leaves the
-  picture. Resting still on an apparatus (e.g. support on the Reck) or balancing on one leg must
-  not stop it.
+- **Stopping:** when the gymnast stands still with both feet on the floor or a landing mat (~1 s),
+  or leaves the picture. Hands don't count as feet: a handstand, resting still on an apparatus
+  (e.g. support on the Reck) or balancing on one leg must not stop it.
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
   floor line used for the stop rule.
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
@@ -83,7 +83,7 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   together with elbows out" counts as crossed.
 - Facing the camera, shoulder width / torso length is only ~0.43–0.55 (profile ~0.1–0.2).
 - The sign drops out for single frames; gaps up to 250 ms don't restart the hold.
-- "On the floor" needs both knees ≥ 0.1 body sizes below the hips (standing measured ≥ 0.13, a
+- "On the floor" needs both ankles near the floor line and both knees ≥ 0.1 body sizes below the hips (standing measured ≥ 0.13, a
   raised leg ≤ 0). Ankles alone fail close to a low phone camera: a raised foot still looks near
   the floor line, and feet are often out of the picture (MediaPipe then guesses them below it).
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0

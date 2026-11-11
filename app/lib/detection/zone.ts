@@ -1,4 +1,4 @@
-import { LM, bodySize, hipCenter, lowestAnkleY, type Point, type Pose } from './pose';
+import { LM, bodySize, higherAnkleY, hipCenter, type Point, type Pose } from './pose';
 
 /**
  * Start zone drawn by the coach on the live image, in normalized image coordinates.
@@ -24,15 +24,15 @@ export function isInZone(pose: Pose, zone: Zone): boolean {
 const KNEES_BELOW_HIPS = 0.1;
 
 /**
- * Standing on the floor with both legs. Balancing on one leg doesn't count: near a low camera the
- * raised foot can look as low in the image as the standing one, so the knees decide.
+ * Both feet on the floor. Hands don't count, so a handstand isn't standing. The knees check
+ * catches a raised leg near a low camera, where its foot can look as low as the standing one.
  */
 export function isOnFloor(pose: Pose, zone: Zone): boolean {
   const size = bodySize(pose);
-  const highestKneeY = Math.min(pose[LM.leftKnee].y, pose[LM.rightKnee].y);
+  const higherKneeY = Math.min(pose[LM.leftKnee].y, pose[LM.rightKnee].y);
   return (
-    highestKneeY - hipCenter(pose).y >= KNEES_BELOW_HIPS * size &&
-    lowestAnkleY(pose) >= zone.bottom - FLOOR_TOLERANCE * size
+    higherKneeY - hipCenter(pose).y >= KNEES_BELOW_HIPS * size &&
+    higherAnkleY(pose) >= zone.bottom - FLOOR_TOLERANCE * size
   );
 }
 

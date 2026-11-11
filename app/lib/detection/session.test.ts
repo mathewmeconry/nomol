@@ -172,6 +172,30 @@ describe('stopping', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('keeps recording while the gymnast stands on one foot with the other bent behind', () => {
+    // The knee of the bent leg still points down, only the foot is off the floor.
+    function footUp(t: number) {
+      const pose = makePose({ x: 0.45, feetY: 0.9, lift: upAndDown(t) });
+      if (t < 2000) return pose;
+      pose[LM.leftAnkle] = { ...pose[LM.leftAnkle], y: pose[LM.leftKnee].y };
+      return pose;
+    }
+    const { events } = run((t) => [footUp(t)], 5000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
+  });
+
+  it('keeps recording during a handstand on the floor', () => {
+    // Upside down: hands on the floor, feet up in the air.
+    function handstand(t: number) {
+      if (t < 500) return makePose({ x: 0.45, feetY: 0.9 });
+      // Arms up, flipped upside down so the wrists (0.42 above the feet) rest on the floor.
+      const armsUp = makePose({ x: 0.45, feetY: 0.9, kind: 'armsUp' });
+      return armsUp.map((p) => ({ ...p, y: 0.9 + 0.48 - p.y }));
+    }
+    const { events } = run((t) => [handstand(t)], 5000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
+  });
+
   it('keeps recording while the gymnast moves on the floor', () => {
     // Walks across the floor: active, but never still.
     const scene: Scene = (t) => [makePose({ x: 0.45 + t / 10000, feetY: 0.9 })];

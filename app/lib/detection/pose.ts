@@ -50,9 +50,9 @@ export function scalePose(pose: Pose, aspectRatio: number): Pose {
   return pose.map((landmark) => ({ ...landmark, x: landmark.x * aspectRatio }));
 }
 
-/** Lowest point of the body in the image (largest y), i.e. where the feet are. */
-export function lowestAnkleY(pose: Pose): number {
-  return Math.max(pose[LM.leftAnkle].y, pose[LM.rightAnkle].y);
+/** The higher of the two feet in the image (smaller y). Both feet are down when this one is. */
+export function higherAnkleY(pose: Pose): number {
+  return Math.min(pose[LM.leftAnkle].y, pose[LM.rightAnkle].y);
 }
 
 /**
