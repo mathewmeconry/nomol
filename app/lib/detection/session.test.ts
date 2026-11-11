@@ -216,6 +216,37 @@ describe('stopping', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('stops when the gymnast shows the sign, anywhere in the picture', () => {
+    // An element, then walks out of the start zone (x 0.3–0.6) to x 0.8 and gives the sign.
+    const x = (t: number) => Math.min(0.8, 0.45 + Math.max(0, t - 2000) / 3000);
+    const scene: Scene = (t) => [
+      makePose({ x: x(t), feetY: 0.9, lift: upAndDown(t), kind: t > 3500 ? 'sign' : 'stand' }),
+    ];
+    const { events } = run(scene, 6000, { from: recording(0.45) });
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toEqual({ type: 'stop', reason: 'sign' });
+    expect(events[0].time).toBeGreaterThanOrEqual(3500 + SIGN_HOLD_MS);
+  });
+
+  it('does not stop on the sign that started the recording', () => {
+    // Started with the sign and still holding it for a few seconds.
+    const { events } = run(() => [makePose({ x: 0.45, feetY: 0.9, kind: 'sign' })], 4000);
+    expect(events.map((e) => e.event.type)).toEqual(['start']);
+  });
+
+  it('starts again only after the sign that ended a recording was released', () => {
+    // Ends the recording with the sign in the start zone and keeps holding it, then lowers the
+    // arms for a moment and gives the sign again.
+    const kind = (t: number) => (t < 3000 || t > 3500 ? 'sign' : 'stand');
+    const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, kind: kind(t) })];
+    const { events } = run(scene, 6000, { from: recording(0.45) });
+    expect(events.map((e) => [e.event.type, e.event.reason])).toEqual([
+      ['stop', 'sign'],
+      ['start', 'sign'],
+    ]);
+    expect(events[1].time).toBeGreaterThan(3500 + SIGN_HOLD_MS);
+  });
+
   it('stops when the gymnast leaves the picture', () => {
     const scene: Scene = (t) => (t < 500 ? [makePose({ x: 0.45, feetY: 0.9 })] : []);
     const { events } = run(scene, 3000, { from: recording(0.45) });

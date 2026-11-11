@@ -36,9 +36,20 @@ export type Frame = {
   aspectRatio: number;
 };
 
-type Idle = { kind: 'idle'; signSince: number | null; signSeenAt: number | null };
+/** Holding the sign: since when, and when it was last seen (for dropouts). */
+type SignState = {
+  signSince: number | null;
+  signSeenAt: number | null;
+  /**
+   * Right after the sign started or ended a recording the gymnast is still holding it; it must
+   * be released before it counts again, or it would end the recording it just started.
+   */
+  waitForRelease: boolean;
+};
 
-type Recording = {
+type Idle = SignState & { kind: 'idle' };
+
+type Recording = SignState & {
   kind: 'recording';
   target: Point;
   lastSeen: number;
@@ -53,7 +64,7 @@ export type SessionState = Idle | Recording;
 
 export type SessionEvent =
   | { type: 'start'; reason: 'sign' | 'button'; pose: Pose }
-  | { type: 'stop'; reason: 'idle' | 'lost' };
+  | { type: 'stop'; reason: 'sign' | 'idle' | 'lost' };
 
 export type StepResult = {
   state: SessionState;
@@ -62,7 +73,36 @@ export type StepResult = {
   target: Pose | null;
 };
 
-export const initialSession: SessionState = { kind: 'idle', signSince: null, signSeenAt: null };
+export const initialSession: Idle = {
+  kind: 'idle',
+  signSince: null,
+  signSeenAt: null,
+  waitForRelease: false,
+};
+
+/**
+ * Tracks the sign over frames, tolerating short dropouts. `held`: held long enough to act on,
+ * and not the one that just started or ended a recording.
+ */
+function holdSign(sign: SignState, signing: boolean, time: number): SignState & { held: boolean } {
+  if (!signing) {
+    const droppedOut = sign.signSeenAt !== null && time - sign.signSeenAt <= SIGN_DROPOUT_MS;
+    if (droppedOut) return { ...sign, held: false };
+    return { signSince: null, signSeenAt: null, waitForRelease: false, held: false };
+  }
+  const signSince = sign.signSince ?? time;
+  return {
+    signSince,
+    signSeenAt: time,
+    waitForRelease: sign.waitForRelease,
+    held: !sign.waitForRelease && time - signSince >= SIGN_HOLD_MS,
+  };
+}
+
+/** The sign state right after it started or ended a recording. */
+function justUsed({ signSince, signSeenAt }: SignState): SignState {
+  return { signSince, signSeenAt, waitForRelease: true };
+}
 
 /**
  * Normalized coordinates stretch x by the aspect ratio (on 16:9, 0.1 across is 1.78× longer
@@ -85,40 +125,34 @@ export function step(state: SessionState, frame: Frame): StepResult {
   };
 }
 
-function startRecording(pose: Pose, time: number): Recording {
-  return { kind: 'recording', target: torsoCenter(pose), lastSeen: time, lastElementAt: null };
+function startRecording(pose: Pose, time: number, sign: SignState): Recording {
+  return {
+    kind: 'recording',
+    target: torsoCenter(pose),
+    lastSeen: time,
+    lastElementAt: null,
+    ...sign,
+  };
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {
   const inZone = frame.poses.filter((pose) => isInZone(pose, frame.zone));
+  const signer = inZone.find(isStartSign);
+  const { held, ...sign } = holdSign(state, signer !== undefined, frame.time);
 
   if (frame.armed && inZone.length > 0) {
     const center = zoneCenter(frame.zone);
     const pose = nearest(inZone, center);
     return {
-      state: startRecording(pose, frame.time),
+      state: startRecording(pose, frame.time, sign),
       event: { type: 'start', reason: 'button', pose },
       target: pose,
     };
   }
 
-  const signer = inZone.find(isStartSign);
-  if (!signer) {
-    const droppedOut =
-      state.signSeenAt !== null && frame.time - state.signSeenAt <= SIGN_DROPOUT_MS;
-    return { state: droppedOut ? state : initialSession, event: null, target: null };
-  }
-
-  const signSince = state.signSince ?? frame.time;
-  if (frame.time - signSince < SIGN_HOLD_MS) {
-    return {
-      state: { kind: 'idle', signSince, signSeenAt: frame.time },
-      event: null,
-      target: null,
-    };
-  }
+  if (!signer || !held) return { state: { kind: 'idle', ...sign }, event: null, target: null };
   return {
-    state: startRecording(signer, frame.time),
+    state: startRecording(signer, frame.time, justUsed(sign)),
     event: { type: 'start', reason: 'sign', pose: signer },
     target: signer,
   };
@@ -138,13 +172,22 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
   }
 
   const pose = nearest(candidates, state.target);
+  // The gymnast ends the recording with the start sign, anywhere in the picture.
+  const { held, ...sign } = holdSign(state, isStartSign(pose), frame.time);
+  if (held) {
+    return {
+      state: { kind: 'idle', ...justUsed(sign) },
+      event: { type: 'stop', reason: 'sign' },
+      target: pose,
+    };
+  }
   const lastElementAt = isOnFloor(pose, frame.zone) ? state.lastElementAt : frame.time;
   if (lastElementAt !== null && frame.time - lastElementAt >= IDLE_MS) {
     return { state: initialSession, event: { type: 'stop', reason: 'idle' }, target: pose };
   }
 
   return {
-    state: { ...state, target: torsoCenter(pose), lastSeen: frame.time, lastElementAt },
+    state: { ...state, ...sign, target: torsoCenter(pose), lastSeen: frame.time, lastElementAt },
     event: null,
     target: pose,
   };

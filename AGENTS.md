@@ -16,10 +16,12 @@ Requirements, as agreed with the owner:
 - **Nothing is recorded without a sign or button press.** No background recording.
 - **Following:** only the person who started is tracked; others in the picture are ignored and
   get no boxes.
-- **Stopping:** when the gymnast leaves the picture, or after ~6 s of only standing or walking
+- **Stopping:** when the recorded gymnast shows the start sign (held ~1 s, anywhere in the
+  picture), leaves the picture, or after ~6 s of only standing or walking
   (both feet on the floor or a landing mat) since their last element. Waiting before the routine
   and short breaks between elements must not stop it. An element is anything but both feet on the
-  floor; hands don't count as feet (handstand, support on the Reck, balancing on one leg).
+  floor; hands don't count as feet (handstand, support on the Reck, balancing on one leg). A sign
+  that just started or ended a recording must be released before it counts again.
 - **Trimming:** the replay starts 1.5 s before the first element and loops up to 2 s after the
   last one (`routineRange`), cutting the wait and the walk-away. The full video is kept, exported
   and can still be scrubbed.

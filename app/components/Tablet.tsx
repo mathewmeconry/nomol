@@ -356,7 +356,9 @@ export default function Tablet() {
       ? 'recording'
       : armedAt !== null
         ? 'armed'
-        : result.state.kind === 'idle' && result.state.signSince !== null
+        : result.state.kind === 'idle' &&
+            result.state.signSince !== null &&
+            !result.state.waitForRelease
           ? 'sign'
           : 'idle';
     setStatus(next);
