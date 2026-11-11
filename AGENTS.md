@@ -105,7 +105,10 @@ tracking and skeleton quality can be analyzed alongside the video.
 ## Testing in a browser
 
 The browser pane has no WebGL, so MediaPipe can't run there. Test end to end in a separate
-Chromium (e.g. Brave via `playwright-core`, headed) with a video as fake camera:
+Chromium (e.g. Brave via `playwright-core`) with a video as fake camera. Run it headless so no
+window pops up on the owner's screen: `headless: true` plus `--use-angle=swiftshader
+--enable-unsafe-swiftshader` gives MediaPipe software WebGL (about half as fast, works). Flags for
+the camera:
 `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
 --use-file-for-fake-video-capture=<file>.mjpeg` (convert with
 `ffmpeg -i in.mp4 -an -vf fps=24,scale=1280:720 -q:v 4 out.mjpeg`; MJPEG plays ~1.25× fast).
