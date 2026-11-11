@@ -1,5 +1,5 @@
 import { makePose } from '~/tests/poses';
-import type { Pose } from './pose';
+import { LM, type Pose } from './pose';
 import {
   LOST_MS,
   SIGN_HOLD_MS,
@@ -154,6 +154,21 @@ describe('stopping', () => {
   it('keeps recording while the gymnast rests still in support on the bar', () => {
     const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, lift: liftAt(t) })];
     const { events } = run(scene, 5000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
+  });
+
+  it('keeps recording while the gymnast holds a leg up', () => {
+    // From a phone recording: close to a low camera, the raised foot still looks near the floor
+    // in the image, but the raised knee is up at hip height.
+    function legUp(t: number) {
+      const pose = makePose({ x: 0.45, feetY: 0.9, lift: upAndDown(t) });
+      if (t < 2000) return pose;
+      const hipY = pose[LM.leftHip].y;
+      pose[LM.leftKnee] = { ...pose[LM.leftKnee], y: hipY };
+      pose[LM.leftAnkle] = { ...pose[LM.leftAnkle], x: 0.6, y: 0.86 };
+      return pose;
+    }
+    const { events } = run((t) => [legUp(t)], 5000, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
 

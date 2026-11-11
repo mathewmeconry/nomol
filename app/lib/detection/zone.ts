@@ -1,4 +1,4 @@
-import { bodySize, hipCenter, lowestAnkleY, type Point, type Pose } from './pose';
+import { LM, bodySize, hipCenter, lowestAnkleY, type Point, type Pose } from './pose';
 
 /**
  * Start zone drawn by the coach on the live image, in normalized image coordinates.
@@ -17,8 +17,23 @@ export function isInZone(pose: Pose, zone: Zone): boolean {
   return hip.x >= zone.left && hip.x <= zone.right && hip.y >= zone.top && hip.y <= zone.bottom;
 }
 
+/**
+ * Standing on both legs keeps both knees clearly below the hips (≥ 0.13 body sizes in a phone
+ * recording); a raised leg brings its knee up to hip height or above.
+ */
+const KNEES_BELOW_HIPS = 0.1;
+
+/**
+ * Standing on the floor with both legs. Balancing on one leg doesn't count: near a low camera the
+ * raised foot can look as low in the image as the standing one, so the knees decide.
+ */
 export function isOnFloor(pose: Pose, zone: Zone): boolean {
-  return lowestAnkleY(pose) >= zone.bottom - FLOOR_TOLERANCE * bodySize(pose);
+  const size = bodySize(pose);
+  const highestKneeY = Math.min(pose[LM.leftKnee].y, pose[LM.rightKnee].y);
+  return (
+    highestKneeY - hipCenter(pose).y >= KNEES_BELOW_HIPS * size &&
+    lowestAnkleY(pose) >= zone.bottom - FLOOR_TOLERANCE * size
+  );
 }
 
 /** See `scalePose`: same conversion of x into image-height units. */

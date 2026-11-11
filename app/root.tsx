@@ -33,6 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#000000" />
         <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.webmanifest`} />
+        <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}apple-touch-icon.png`} />
         <Meta />
         <Links />
       </head>

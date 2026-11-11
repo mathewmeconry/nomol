@@ -162,6 +162,17 @@ export default function Tablet() {
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
+  // The browser's address bar takes much of a phone's height. Fullscreen needs a tap, so every
+  // tap restores it, e.g. after the share sheet or the back gesture. iPhones don't support it.
+  useEffect(() => {
+    function enterFullscreen() {
+      if (document.fullscreenElement || !document.fullscreenEnabled) return;
+      void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    }
+    window.addEventListener('pointerdown', enterFullscreen);
+    return () => window.removeEventListener('pointerdown', enterFullscreen);
+  }, []);
+
   async function finishRecording(time: number) {
     const active = activeRef.current;
     if (!active) return;
