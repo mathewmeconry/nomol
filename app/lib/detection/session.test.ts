@@ -224,6 +224,17 @@ describe('stopping', () => {
     expect(events[0].time).toBeGreaterThan(500 + LOST_MS);
   });
 
+  it('finds the gymnast again after the detection jumps away', () => {
+    // From a phone recording: going into a handstand the skeleton flipped and the last tracked
+    // position ended up off the body. The gymnast is then 0.25 away from where tracking expects.
+    const scene: Scene = (t) => [
+      makePose({ x: t < 1000 ? 0.45 : 0.7, feetY: 0.9, lift: liftAt(t) }),
+    ];
+    const { events, state } = run(scene, 4000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
+    expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.7, 1);
+  });
+
   it('follows the recorded person and not someone standing still nearby', () => {
     // A spotter stands still on the floor the whole time; the gymnast is on the bar.
     const scene: Scene = (t) => [

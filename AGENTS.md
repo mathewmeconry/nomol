@@ -57,7 +57,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
-  from CDNs (`pose-detector.client.ts`).
+  from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 150 ms per frame
+  (median over the first 3 s of detection), the lite model takes over.
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
   (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
 - Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
@@ -87,6 +88,10 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   together with elbows out" counts as crossed.
 - Facing the camera, shoulder width / torso length is only ~0.43–0.55 (profile ~0.1–0.2).
 - The sign drops out for single frames; gaps up to 250 ms don't restart the hold.
+- Handstands: on a phone recording (31 handstand frames) lite found the person in 23 and got 18
+  the right way up, full 19/17, heavy 31/21. Going into a handstand the skeleton flips between
+  upright and upside down, so the person is followed by the torso centre (middle of shoulders
+  and hips, unchanged by a flip), and the search radius widens while they aren't found.
 - "On the floor" needs both ankles near the floor line and both knees ≥ 0.1 body sizes below the hips (standing measured ≥ 0.13, a
   raised leg ≤ 0). Ankles alone fail close to a low phone camera: a raised foot still looks near
   the floor line, and feet are often out of the picture (MediaPipe then guesses them below it).
@@ -112,6 +117,10 @@ the camera:
 `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream
 --use-file-for-fake-video-capture=<file>.mjpeg` (convert with
 `ffmpeg -i in.mp4 -an -vf fps=24,scale=1280:720 -q:v 4 out.mjpeg`; MJPEG plays ~1.25× fast).
+To compare models on an exported video, run them frame by frame in the page: load the video as a
+blob URL (a Playwright-routed response can't seek) and re-encode it first (`-g 1`), because
+recorded MP4s seek badly and report wrong durations. Software WebGL is far slower than a real
+GPU, so only relative timings mean something; headless with a GPU (`--use-angle=gl`) crashes.
 Keep such files and scripts outside the repo. Check layouts at phone sizes (e.g. 844×390,
 390×844) and on a tablet (e.g. 1180×820).
 

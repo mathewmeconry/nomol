@@ -1,4 +1,4 @@
-import { distance, hipCenter, scalePose, type Point, type Pose } from './pose';
+import { distance, scalePose, torsoCenter, type Point, type Pose } from './pose';
 import { isStartSign } from './sign';
 import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
 
@@ -17,8 +17,13 @@ const SIGN_DROPOUT_MS = 250;
 export const IDLE_MS = 6000;
 /** Stop when the tracked person has not been seen for this long (left the picture). */
 export const LOST_MS = 1500;
-/** Largest hip jump between frames (image heights) that still counts as the same person. */
+/** Largest torso jump between frames (image heights) that still counts as the same person. */
 const MAX_JUMP = 0.15;
+/**
+ * While the person isn't found, the search widens by this much per second (image heights), so
+ * tracking catches up after a bad frame instead of waiting at a stale spot until `LOST_MS`.
+ */
+const SEARCH_GROWTH_PER_S = 0.6;
 
 export type Frame = {
   time: number;
@@ -81,7 +86,7 @@ export function step(state: SessionState, frame: Frame): StepResult {
 }
 
 function startRecording(pose: Pose, time: number): Recording {
-  return { kind: 'recording', target: hipCenter(pose), lastSeen: time, lastElementAt: null };
+  return { kind: 'recording', target: torsoCenter(pose), lastSeen: time, lastElementAt: null };
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {
@@ -121,7 +126,9 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
 
 function stepRecording(state: Recording, frame: Frame): StepResult {
   const candidates = frame.poses.filter(
-    (pose) => distance(hipCenter(pose), state.target) <= MAX_JUMP,
+    (pose) =>
+      distance(torsoCenter(pose), state.target) <=
+      MAX_JUMP + (SEARCH_GROWTH_PER_S * (frame.time - state.lastSeen)) / 1000,
   );
   if (candidates.length === 0) {
     if (frame.time - state.lastSeen > LOST_MS) {
@@ -137,7 +144,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
   }
 
   return {
-    state: { ...state, target: hipCenter(pose), lastSeen: frame.time, lastElementAt },
+    state: { ...state, target: torsoCenter(pose), lastSeen: frame.time, lastElementAt },
     event: null,
     target: pose,
   };
@@ -145,6 +152,6 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
 
 function nearest(poses: Pose[], point: Point): Pose {
   return poses.reduce((best, pose) =>
-    distance(hipCenter(pose), point) < distance(hipCenter(best), point) ? pose : best,
+    distance(torsoCenter(pose), point) < distance(torsoCenter(best), point) ? pose : best,
   );
 }

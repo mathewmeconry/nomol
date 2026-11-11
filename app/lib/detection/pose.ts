@@ -41,6 +41,14 @@ export function hipCenter(pose: Pose): Point {
   return midpoint(pose[LM.leftHip], pose[LM.rightHip]);
 }
 
+/**
+ * Middle of shoulders and hips. Used to follow a person: when the model flips the skeleton
+ * (common going into a handstand), hips and shoulders swap, but their middle stays put.
+ */
+export function torsoCenter(pose: Pose): Point {
+  return midpoint(hipCenter(pose), midpoint(pose[LM.leftShoulder], pose[LM.rightShoulder]));
+}
+
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
