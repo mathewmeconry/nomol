@@ -8,15 +8,17 @@ import {
   Share,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { Button } from '~/components/ui/button';
 import { Progress } from '~/components/ui/progress';
 import { Slider } from '~/components/ui/slider';
 import { Toggle } from '~/components/ui/toggle';
 import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/clip';
+import type { Point } from '~/lib/detection/pose';
 import { exportClip } from '~/lib/recording/export.client';
 import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
+import { FULL_VIEW, zoomView, type View } from '~/lib/zoom';
 
 /** One button cycles through these, to save space on phones. */
 const SPEEDS = [
@@ -46,9 +48,17 @@ function formatTime(ms: number) {
   return `${minutes}:${(seconds - minutes * 60).toFixed(2).padStart(5, '0')}`;
 }
 
+/** Midpoint and spread of the first two fingers (spread 0 for one finger). */
+function fingers(points: Point[]) {
+  const [a, b = a] = points;
+  return {
+    center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    spread: Math.hypot(a.x - b.x, a.y - b.y),
+  };
+}
+
 type Props = {
   clip: Clip;
-  aspectRatio: number;
   /** The list of recent clips, shown above the controls. */
   clipStrip: ReactNode;
   /** While the skeleton is being computed; frames without one show no skeleton yet. */
@@ -61,14 +71,7 @@ type Props = {
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
  * Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({
-  clip,
-  aspectRatio,
-  clipStrip,
-  skeletonProgress,
-  onLive,
-  onDelete,
-}: Props) {
+export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, onDelete }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Follows the video's own play/pause events, so the button never disagrees with it.
@@ -83,6 +86,10 @@ export default function ClipPlayer({
   const [lastTouch, setLastTouch] = useState(0);
   /** Where to seek once the running seek is done (see `seek`). */
   const pendingSeekRef = useRef<number | null>(null);
+  /** Applied in the render loop, so the video and its skeleton move in the same frame. */
+  const viewRef = useRef<View>(FULL_VIEW);
+  /** Fingers on the picture, in CSS pixels of the frame. */
+  const pointersRef = useRef(new Map<number, Point>());
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
@@ -110,11 +117,22 @@ export default function ClipPlayer({
         const time = video.currentTime * 1000;
         previousMs = time;
         setTimeMs(pendingSeekRef.current ?? time);
+        const view = viewRef.current;
+        video.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
         // While a seek decodes, the old frame is still on screen: keep its skeleton.
         if (!video.seeking) {
           const surface = prepareCanvas(canvas);
           const pose = skeleton ? poseAt(clip.skeleton, time) : null;
-          if (surface && pose) drawSkeleton(surface.ctx, pose, surface.width, surface.height);
+          if (surface && pose) {
+            // Zoomed in the drawing rather than by CSS, so the lines stay thin and sharp.
+            surface.ctx.translate(view.x, view.y);
+            drawSkeleton(
+              surface.ctx,
+              pose,
+              surface.width * view.scale,
+              surface.height * view.scale,
+            );
+          }
         }
       }
       frame = requestAnimationFrame(render);
@@ -155,6 +173,34 @@ export default function ClipPlayer({
     if (video) seek(video.currentTime * 1000 + frames * frameDuration(clip));
   }
 
+  function localPoint(event: PointerEvent<HTMLDivElement>): Point {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /** Two fingers zoom, one finger moves the zoomed picture. */
+  function onPinchMove(event: PointerEvent<HTMLDivElement>) {
+    const pointers = pointersRef.current;
+    if (!pointers.has(event.pointerId)) return;
+    const before = fingers([...pointers.values()]);
+    pointers.set(event.pointerId, localPoint(event));
+    const after = fingers([...pointers.values()]);
+    const factor = before.spread > 0 ? after.spread / before.spread : 1;
+    const { clientWidth, clientHeight } = event.currentTarget;
+    viewRef.current = zoomView(
+      viewRef.current,
+      factor,
+      before.center,
+      after.center,
+      clientWidth,
+      clientHeight,
+    );
+  }
+
+  function onPinchEnd(event: PointerEvent<HTMLDivElement>) {
+    pointersRef.current.delete(event.pointerId);
+  }
+
   return (
     <div
       className="absolute inset-0 flex items-center justify-center bg-black"
@@ -164,13 +210,25 @@ export default function ClipPlayer({
       }}
     >
       <div
-        className="relative"
-        style={{ aspectRatio, width: `min(100%, calc(100dvh * ${aspectRatio}))` }}
+        className="relative touch-none overflow-hidden"
+        // The clip's own shape: the phone may have been turned since it was recorded.
+        style={{
+          aspectRatio: clip.aspectRatio,
+          width: `min(100%, calc(100dvh * ${clip.aspectRatio}))`,
+        }}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          pointersRef.current.set(event.pointerId, localPoint(event));
+        }}
+        onPointerMove={onPinchMove}
+        onPointerUp={onPinchEnd}
+        onPointerCancel={onPinchEnd}
+        onDoubleClick={() => (viewRef.current = FULL_VIEW)}
       >
         <video
           ref={videoRef}
           src={clip.url}
-          className="absolute inset-0 h-full w-full"
+          className="absolute inset-0 h-full w-full origin-top-left"
           autoPlay
           muted
           playsInline

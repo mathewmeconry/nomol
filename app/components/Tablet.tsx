@@ -448,7 +448,6 @@ export default function Tablet() {
         <ClipPlayer
           key={current.id}
           clip={current}
-          aspectRatio={aspectRatio}
           clipStrip={clipStrip}
           skeletonProgress={skeletonProgress[current.id] ?? null}
           onLive={() => setView('live')}
