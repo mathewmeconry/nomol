@@ -81,6 +81,8 @@ export default function ClipPlayer({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [lastTouch, setLastTouch] = useState(0);
+  /** Where to seek once the running seek is done (see `seek`). */
+  const pendingSeekRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
@@ -107,10 +109,13 @@ export default function ClipPlayer({
         }
         const time = video.currentTime * 1000;
         previousMs = time;
-        setTimeMs(time);
-        const surface = prepareCanvas(canvas);
-        const pose = skeleton ? poseAt(clip.skeleton, time) : null;
-        if (surface && pose) drawSkeleton(surface.ctx, pose, surface.width, surface.height);
+        setTimeMs(pendingSeekRef.current ?? time);
+        // While a seek decodes, the old frame is still on screen: keep its skeleton.
+        if (!video.seeking) {
+          const surface = prepareCanvas(canvas);
+          const pose = skeleton ? poseAt(clip.skeleton, time) : null;
+          if (surface && pose) drawSkeleton(surface.ctx, pose, surface.width, surface.height);
+        }
       }
       frame = requestAnimationFrame(render);
     }
@@ -125,11 +130,24 @@ export default function ClipPlayer({
     else video.pause();
   }
 
+  /**
+   * Seeks one at a time: phones decode a seek slowly (from the last keyframe), and a new seek
+   * cancels the running one, so dragging the timeline would never show a frame.
+   */
   function seek(ms: number) {
     const video = videoRef.current;
     if (!video) return;
     video.pause();
-    video.currentTime = Math.min(Math.max(ms, 0), clip.durationMs) / 1000;
+    const target = Math.min(Math.max(ms, 0), clip.durationMs);
+    if (video.seeking) pendingSeekRef.current = target;
+    else video.currentTime = target / 1000;
+  }
+
+  function onSeeked(video: HTMLVideoElement) {
+    const pending = pendingSeekRef.current;
+    if (pending === null) return;
+    pendingSeekRef.current = null;
+    video.currentTime = pending / 1000;
   }
 
   function stepFrames(frames: number) {
@@ -164,6 +182,7 @@ export default function ClipPlayer({
             event.currentTarget.currentTime = routineRange(clip).startMs / 1000;
             void event.currentTarget.play();
           }}
+          onSeeked={(event) => onSeeked(event.currentTarget)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         />

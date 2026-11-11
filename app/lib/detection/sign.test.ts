@@ -23,6 +23,21 @@ describe('isStartSign', () => {
     expect(isStartSign(pose)).toBe(true);
   });
 
+  it('accepts the sign from far away, where MediaPipe is unsure about the crossed wrists', () => {
+    // A phone recording shrunk to a third: wrist visibility 0.1–0.2, positions still right.
+    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
+    pose[LM.leftWrist] = { ...pose[LM.leftWrist], visibility: 0.12 };
+    pose[LM.rightWrist] = { ...pose[LM.rightWrist], visibility: 0.08 };
+    pose[LM.rightElbow] = { ...pose[LM.rightElbow], visibility: 0.42 };
+    expect(isStartSign(pose)).toBe(true);
+  });
+
+  it('rejects the sign when the body itself is not visible', () => {
+    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
+    pose[LM.leftHip] = { ...pose[LM.leftHip], visibility: 0.1 };
+    expect(isStartSign(pose)).toBe(false);
+  });
+
   it('rejects hands held together above the head with straight arms', () => {
     const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
     pose[LM.leftElbow] = { ...pose[LM.leftElbow], x: 0.52 };
@@ -40,11 +55,5 @@ describe('isStartSign', () => {
 
   it('rejects the sign when the person is seen from the side', () => {
     expect(isStartSign(makePose({ x: 0.5, feetY: 0.9, kind: 'sign', side: true }))).toBe(false);
-  });
-
-  it('rejects poses with hidden wrists', () => {
-    const pose = makePose({ x: 0.5, feetY: 0.9, kind: 'sign' });
-    pose[15] = { ...pose[15], visibility: 0.1 };
-    expect(isStartSign(pose)).toBe(false);
   });
 });

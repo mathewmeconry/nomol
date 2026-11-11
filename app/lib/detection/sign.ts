@@ -21,20 +21,10 @@ const MIN_ELBOW_GAP = 0.9;
  * Expects coordinates in equal units on both axes (see `scalePose`).
  */
 export function isStartSign(pose: Pose): boolean {
-  if (
-    !isVisible(
-      pose,
-      LM.nose,
-      LM.leftShoulder,
-      LM.rightShoulder,
-      LM.leftElbow,
-      LM.rightElbow,
-      LM.leftWrist,
-      LM.rightWrist,
-      LM.leftHip,
-      LM.rightHip,
-    )
-  ) {
+  // Elbows and wrists may be unsure: further away than ~half the picture height the heavy model
+  // rates crossed wrists (hiding each other) at 0.1–0.5 visibility, though their positions are
+  // right. The shape below still has to match, which guessed arms don't.
+  if (!isVisible(pose, LM.nose, LM.leftShoulder, LM.rightShoulder, LM.leftHip, LM.rightHip)) {
     return false;
   }
 

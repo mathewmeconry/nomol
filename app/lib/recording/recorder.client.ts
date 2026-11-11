@@ -7,9 +7,20 @@ export function pickMimeType(isSupported: (type: string) => boolean): string | u
 
 export type Recording = { stop: () => Promise<Blob> };
 
+/**
+ * A keyframe every half second. Phones otherwise record one only every few seconds, and seeking
+ * has to decode from the last keyframe, so scrubbing the replay looked frozen. Not in
+ * TypeScript's DOM types yet; browsers without it ignore the option.
+ */
+const KEYFRAME_EVERY_MS = 500;
+
 export function startRecording(stream: MediaStream): Recording {
   const mimeType = pickMimeType((type) => MediaRecorder.isTypeSupported(type));
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration: number } = {
+    ...(mimeType ? { mimeType } : {}),
+    videoKeyFrameIntervalDuration: KEYFRAME_EVERY_MS,
+  };
+  const recorder = new MediaRecorder(stream, options);
   const chunks: Blob[] = [];
   recorder.addEventListener('dataavailable', (event) => {
     if (event.data.size > 0) chunks.push(event.data);
