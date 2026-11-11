@@ -1,6 +1,6 @@
 import { LM } from '~/lib/detection/pose';
 import { makePose } from '~/tests/poses';
-import { INPUT_HEIGHT, INPUT_WIDTH, cropAround, decode, toInput } from './rtmpose';
+import { INPUT_HEIGHT, INPUT_WIDTH, cropAround, cropFromBox, decode, toInput } from './rtmpose';
 
 describe('cropAround', () => {
   it("doesn't shrink when the current pose collapsed onto part of the body", () => {
@@ -17,6 +17,15 @@ describe('cropAround', () => {
     expect(crop.x + crop.width / 2).toBeCloseTo(0.5 * 1280, 0);
     // The test pose spans 0.33 of the image height, feet to head.
     expect(crop.height).toBeGreaterThan(0.33 * 720);
+  });
+});
+
+describe('cropFromBox', () => {
+  it('pads a detector box by 1.25 and widens it to 3:4', () => {
+    const crop = cropFromBox({ left: 100, top: 100, right: 200, bottom: 500 });
+    expect(crop.height).toBeCloseTo(500);
+    expect(crop.width).toBeCloseTo(375);
+    expect(crop.x + crop.width / 2).toBeCloseTo(150);
   });
 });
 

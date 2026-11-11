@@ -27,7 +27,8 @@ offline.
 
 Live detection (start sign, following, stopping) uses MediaPipe Pose. The replay skeleton is
 computed after each recording with [RTMPose](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose)
-(RTMPose-m, Apache-2.0, `public/models/rtmpose-m.onnx`), which handles handstands far better.
+and its YOLOX person detector (RTMPose-m and YOLOX-s, Apache-2.0, in `public/models/`), which
+handle handstands far better.
 
 The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
 uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.txt` (JSON body

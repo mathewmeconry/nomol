@@ -62,10 +62,15 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 150 ms per frame
   (median over the first 3 s of detection), the lite model takes over. MediaPipe drives
   everything live (sign, tracking, stop, trimming).
-- Replay skeleton: RTMPose-m (body7, 256×192, Apache-2.0) with `onnxruntime-web` on the CPU in a
-  worker (`app/lib/skeleton/`). While recording, the gymnast is cropped around MediaPipe's pose
-  10× per second and kept as small JPEGs; afterwards RTMPose runs on the crops, the routine first.
-  The model is `public/models/rtmpose-m.onnx` (54 MB, from openmmlab's ONNX SDK release).
+- Replay skeleton: YOLOX-s (human-art) finds the people, RTMPose-m (body7, 256×192) the
+  keypoints, both Apache-2.0, with `onnxruntime-web` in a worker (`app/lib/skeleton/`). While
+  recording, the frame (long side 640) and MediaPipe's pose are saved 10× per second as JPEG;
+  afterwards, routine first: YOLOX (WebGPU) → the box containing MediaPipe's torso centre →
+  RTMPose (WASM) on a crop around it. Without WebGPU, or if no box contains the gymnast, the crop
+  comes from MediaPipe's poses. Models in `public/models/` (`yolox-s.onnx` 36 MB,
+  `rtmpose-m.onnx` 54 MB, from openmmlab's ONNX SDK releases).
+- Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
+  every ~3 s, and scrubbing the replay looked frozen while each seek decoded seconds of video.
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
   (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
 - Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model, RTMPose model),
@@ -84,8 +89,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - `app/components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
 - `app/lib/recording/`: clips, recorder, storage, export, skeleton interpolation (`poseAt`).
-- `app/lib/skeleton/`: RTMPose replay skeleton. `rtmpose.ts` crop/pre/post-processing (pure,
-  tested), `rtmpose.worker.ts` inference, `refiner.client.ts` crop capture and the job queue.
+- `app/lib/skeleton/`: replay skeleton. `yolox.ts` and `rtmpose.ts` pre/post-processing, box
+  choice and crops (pure, tested), `rtmpose.worker.ts` inference, `refiner.client.ts` frame
+  capture and the job queue.
 - `app/tests/poses.ts`: builds synthetic poses for tests.
 
 ## Detection notes (learned from real footage)
@@ -114,7 +120,12 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   onto part of the body, and the combined extent instead made the person too small.
 - onnxruntime-web 1.30 WebGPU computes RTMPose-m wrong (keypoints pinned to the crop edges; the
   same input in Python is fine) while YOLOX-s works on WebGPU (~90 ms). On WASM RTMPose-m takes
-  ~190 ms per crop on a laptop, MediaPipe heavy on the GPU ~35 ms per frame.
+  ~190 ms per crop on a laptop, MediaPipe heavy on the GPU ~35 ms per frame. End to end on the
+  handstand video (11 s clip, 75 frames) YOLOX + RTMPose took ~30 s on a laptop and left 4–6
+  frames with fewer than 5 of 9 main keypoints (MediaPipe crops only: 9), all blurred kick-ups.
+- Start sign from far away: further than ~half the picture height, MediaPipe heavy rates crossed
+  wrists at 0.1–0.5 visibility although their positions are right (phone frames shrunk to ½, ⅓
+  and ¼: sign recognised in 7 of 8 at each size once arms needn't be visible).
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

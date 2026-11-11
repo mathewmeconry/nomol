@@ -1,19 +1,23 @@
 import { LM, boundingBox, type Pose } from '~/lib/detection/pose';
+import type { Box } from './yolox';
 
 /**
  * RTMPose-m (body7, 256×192) computes the replay skeleton after a recording. It gets upside-down
- * poses right far more often than MediaPipe (on a handstand recording 43 of 48 frames vs ~33),
- * but is too slow to run live, so it works on crops saved while recording.
+ * poses right far more often than MediaPipe (on a handstand recording 44 of 47 frames vs ~33),
+ * but is too slow to run live, so it works on frames saved while recording. It looks at a crop
+ * around the gymnast: YOLOX's box where available, else one from MediaPipe's pose.
  */
 export const INPUT_WIDTH = 192;
 export const INPUT_HEIGHT = 256;
 
 /**
- * The crop is MediaPipe's landmark box enlarged this much: RTMPose's usual 1.25 times 1.4, as
+ * A MediaPipe crop is its landmark box enlarged this much: RTMPose's usual 1.25 times 1.4, as
  * MediaPipe's box is tighter than a detector's and sometimes off when it flips the skeleton.
  * Measured on the handstand recording: 1.25 found 40 of 48 frames, 1.75 found 46.
  */
 const CROP_PADDING = 1.75;
+/** A detector's box fits the body closely; RTMPose was trained with this much around it. */
+const DETECTOR_BOX_PADDING = 1.25;
 /** RTMPose predicts x and y on a grid twice as fine as its input. */
 const SIMCC_SPLIT = 2;
 const KEYPOINTS = 17;
@@ -66,10 +70,26 @@ export function cropAround(recent: Pose[], videoWidth: number, videoHeight: numb
     width: (b.right - b.left) * videoWidth,
     height: (b.bottom - b.top) * videoHeight,
   });
-  const centerX = ((box.left + box.right) / 2) * videoWidth;
-  const centerY = ((box.top + box.bottom) / 2) * videoHeight;
-  let width = Math.max(size(box).width, median(boxes.map((b) => size(b).width))) * CROP_PADDING;
-  let height = Math.max(size(box).height, median(boxes.map((b) => size(b).height))) * CROP_PADDING;
+  return region(
+    ((box.left + box.right) / 2) * videoWidth,
+    ((box.top + box.bottom) / 2) * videoHeight,
+    Math.max(size(box).width, median(boxes.map((b) => size(b).width))) * CROP_PADDING,
+    Math.max(size(box).height, median(boxes.map((b) => size(b).height))) * CROP_PADDING,
+  );
+}
+
+/** Around a detector box (in pixels), with RTMPose's usual padding. */
+export function cropFromBox(box: Box): Crop {
+  return region(
+    (box.left + box.right) / 2,
+    (box.top + box.bottom) / 2,
+    (box.right - box.left) * DETECTOR_BOX_PADDING,
+    (box.bottom - box.top) * DETECTOR_BOX_PADDING,
+  );
+}
+
+/** At least `width` × `height` around the centre, widened to the model's 3:4 aspect ratio. */
+function region(centerX: number, centerY: number, width: number, height: number): Crop {
   const aspect = INPUT_WIDTH / INPUT_HEIGHT;
   if (width > height * aspect) height = width / aspect;
   else width = height * aspect;

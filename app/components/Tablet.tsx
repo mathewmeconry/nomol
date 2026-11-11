@@ -28,11 +28,12 @@ import { deleteClip, loadClips, saveClip, saveSkeleton } from '~/lib/recording/c
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import {
-  captureCrop,
+  captureFrame,
   createSkeletonRefiner,
-  type CropFrame,
+  frameSize,
   type SkeletonProgress,
   type SkeletonRefiner,
+  type SkeletonSample,
 } from '~/lib/skeleton/refiner.client';
 import { cropAround } from '~/lib/skeleton/rtmpose';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
@@ -49,13 +50,16 @@ const MAX_CLIPS = 8;
  */
 const STILL_EVERY_MS = 500;
 /**
- * How often the gymnast is cropped for the RTMPose skeleton. 10 per second look smooth with
+ * How often a frame is saved for the RTMPose skeleton. 10 per second look smooth with
  * interpolation and keep the computation after a recording short.
  */
-const CROP_EVERY_MS = 100;
-/** The crop covers the gymnast's poses over this long (see `cropAround`). */
+const SAMPLE_EVERY_MS = 100;
+/** The fallback crop covers the gymnast's poses over this long (see `cropAround`). */
 const CROP_WINDOW_MS = 500;
-const SKELETON_MODEL_URL = `${import.meta.env.BASE_URL}models/rtmpose-m.onnx`;
+const SKELETON_MODELS = {
+  pose: `${import.meta.env.BASE_URL}models/rtmpose-m.onnx`,
+  detector: `${import.meta.env.BASE_URL}models/yolox-s.onnx`,
+};
 
 type Status = 'idle' | 'sign' | 'armed' | 'recording';
 
@@ -79,7 +83,7 @@ type ActiveRecording = {
   startedDate: Date;
   frames: ClipFrame[];
   stills: { time: number; url: string }[];
-  crops: CropFrame[];
+  samples: SkeletonSample[];
   zone: Zone;
   aspectRatio: number;
 };
@@ -241,18 +245,17 @@ export default function Tablet() {
     setView('replay');
     // A full or blocked storage only means the clip won't survive a reload.
     void saveClip(clip, blob).catch(() => {});
-    computeSkeleton(clip, active.crops, { startMs, endMs });
+    computeSkeleton(clip, active.samples, { startMs, endMs });
   }
 
-  /** Runs RTMPose on the crops in the background and fills in the clip's skeleton as it goes. */
+  /** Runs RTMPose on the saved frames in the background and fills in the clip's skeleton. */
   function computeSkeleton(
     clip: Clip,
-    crops: CropFrame[],
+    samples: SkeletonSample[],
     first: { startMs: number; endMs: number },
   ) {
-    const video = videoRef.current;
-    if (!video || crops.length === 0) return;
-    refinerRef.current ??= createSkeletonRefiner(SKELETON_MODEL_URL);
+    if (samples.length === 0) return;
+    refinerRef.current ??= createSkeletonRefiner(SKELETON_MODELS);
     let skeleton: ClipFrame[] = [];
     const setProgress = (progress: SkeletonProgress | null) =>
       setSkeletonProgress((previous) => {
@@ -261,9 +264,7 @@ export default function Tablet() {
       });
     refinerRef.current
       .refine({
-        frames: crops,
-        videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight,
+        samples,
         first,
         onFrame(frame) {
           skeleton = insertFrame(skeleton, frame);
@@ -280,18 +281,23 @@ export default function Tablet() {
   }
 
   /** Call after adding the current frame to `active.frames`. */
-  function recordCrop(active: ActiveRecording, time: number) {
+  function recordSample(active: ActiveRecording, time: number) {
     const video = videoRef.current;
     const now = time - active.startedAt;
-    const last = active.crops[active.crops.length - 1];
-    if (!video || (last && now - last.time < CROP_EVERY_MS)) return;
+    const last = active.samples[active.samples.length - 1];
+    if (!video || (last && now - last.time < SAMPLE_EVERY_MS)) return;
     const recent = active.frames.filter((frame) => frame.time >= now - CROP_WINDOW_MS);
-    const crop = cropAround(
-      recent.map((frame) => frame.pose),
-      video.videoWidth,
-      video.videoHeight,
-    );
-    active.crops.push({ time: now, crop, image: captureCrop(video, crop) });
+    const { width, height } = frameSize(video);
+    active.samples.push({
+      time: now,
+      image: captureFrame(video),
+      tracked: recent[recent.length - 1].pose,
+      fallback: cropAround(
+        recent.map((frame) => frame.pose),
+        width,
+        height,
+      ),
+    });
   }
 
   function recordStill(active: ActiveRecording, time: number) {
@@ -329,7 +335,7 @@ export default function Tablet() {
         startedDate: new Date(),
         frames: [],
         stills: [],
-        crops: [],
+        samples: [],
         zone,
         aspectRatio,
       };
@@ -340,7 +346,7 @@ export default function Tablet() {
     if (active) {
       if (result.target) {
         active.frames.push({ time: time - active.startedAt, pose: result.target });
-        recordCrop(active, time);
+        recordSample(active, time);
       }
       recordStill(active, time);
     }
