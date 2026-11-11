@@ -109,6 +109,52 @@ export function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, w: number, h
   ctx.fillStyle = 'rgba(60, 211, 176, 0.95)';
   ctx.textBaseline = 'bottom';
   ctx.fillText('STARTZONE', x + 4, y - 4);
+
+  // The start sign, in the top-left corner so it doesn't cover whoever stands in the zone.
+  const size = Math.min(Math.max((zone.bottom - zone.top) * h * 0.3, 40), 110);
+  const pad = size * 0.15;
+  if (
+    size * 0.6 + 2 * pad <= (zone.right - zone.left) * w &&
+    size * 1.2 + 2 * pad <= (zone.bottom - zone.top) * h
+  ) {
+    drawStartSign(ctx, x + pad + size * 0.3, y + pad + size * 1.2, size);
+  }
+}
+
+/**
+ * Stick figure showing the start sign: upper arms out and up, forearms crossing in an X above
+ * the head. Stands at (x, feetY); `size` is roughly its height without the arms.
+ */
+function drawStartSign(ctx: CanvasRenderingContext2D, x: number, feetY: number, size: number) {
+  const at = (dx: number, dy: number): [number, number] => [x + dx * size, feetY - dy * size];
+  const strokes: [number, number][][] = [
+    [at(-0.12, 0), at(0, 0.4), at(0.12, 0)], // legs
+    [at(0, 0.4), at(0, 0.72)], // body
+    [at(-0.27, 0.9), at(-0.13, 0.68), at(0.13, 0.68), at(0.27, 0.9)], // upper arms, shoulders
+    [at(-0.27, 0.9), at(0.12, 1.16)], // forearms
+    [at(0.27, 0.9), at(-0.12, 1.16)],
+  ];
+  const head = at(0, 0.8);
+  const width = Math.max(2.5, size * 0.055);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Dark outline first, so the figure stays readable on any background.
+  for (const [color, lineWidth] of [
+    ['rgba(0, 0, 0, 0.6)', width + 3],
+    ['rgba(60, 211, 176, 1)', width],
+  ] as const) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    for (const points of strokes) {
+      ctx.beginPath();
+      ctx.moveTo(...points[0]);
+      for (const point of points.slice(1)) ctx.lineTo(...point);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(...head, size * 0.075, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 export function drawPersonBox(
