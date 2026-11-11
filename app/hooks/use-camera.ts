@@ -9,15 +9,16 @@ export type CameraState =
  * The chosen camera, or the back camera by default, as sharp and smooth as it allows. Video only.
  */
 function constraints(deviceId: string | null): MediaStreamConstraints {
-  return {
-    audio: false,
-    video: {
-      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 60 },
-    },
+  // Zoom isn't in TypeScript's DOM types yet. Chrome only reports zoom (and with it the
+  // ultra-wide lens) when asked for it.
+  const video: MediaTrackConstraints & { zoom: boolean } = {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 60 },
+    zoom: true,
   };
+  return { audio: false, video };
 }
 
 /** Opens `deviceId`, falling back to the default camera if it's gone (e.g. a saved choice). */

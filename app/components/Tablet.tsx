@@ -4,6 +4,7 @@ import ClipStrip from '~/components/ClipStrip';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useCameras from '~/hooks/use-cameras';
+import useWideAngle from '~/hooks/use-wide-angle';
 import { loadCameraId, saveCameraId } from '~/lib/camera-choice';
 import useWakeLock from '~/hooks/use-wake-lock';
 import type { PoseDetector } from '~/lib/detection/pose-detector.client';
@@ -68,6 +69,7 @@ export default function Tablet() {
     camera.status === 'ready'
       ? camera.stream.getVideoTracks()[0]?.getSettings().deviceId
       : undefined;
+  const wideAngle = useWideAngle(camera.status === 'ready' ? camera.stream : null);
   useWakeLock();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -414,6 +416,17 @@ export default function Tablet() {
                 </option>
               ))}
             </select>
+          )}
+          {wideAngle.zoom !== undefined && (
+            <button
+              type="button"
+              aria-pressed={wideAngle.wide}
+              disabled={status === 'recording'}
+              onClick={wideAngle.toggle}
+              className={`${floating} text-slate-300 aria-pressed:text-sky-300`}
+            >
+              {`${wideAngle.zoom.toLocaleString('de-CH')}×`}
+            </button>
           )}
           <button
             type="button"

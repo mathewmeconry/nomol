@@ -26,7 +26,7 @@ service worker (`public/sw.js`, production builds only) keeps the app and the mo
 offline.
 
 The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
-uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.json` (body
+uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.txt` (JSON body
 points per frame, start zone, aspect ratio).
 
 ## Setting up a tablet

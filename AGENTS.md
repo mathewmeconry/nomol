@@ -21,11 +21,14 @@ Requirements, as agreed with the owner:
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
   floor line used for the stop rule.
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
+  Chrome on Android usually lists only front and back; there a zoom button (e.g. "0,5×") reaches
+  the ultra-wide lens if the phone allows zooming below 1×.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
   next gymnast. Speeds ¼× / ½× / 1×, frame steps (1 and 5), skeleton overlay incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts.
 - **Clips:** recent recordings as a strip with one thumbnail each. Last 8 kept on the device
-  (IndexedDB), deletable with two taps, exportable as video + `.nomol.json`.
+  (IndexedDB), deletable with two taps, exportable as video + `.nomol.txt` (JSON; Chrome on
+  Android won't share `.json` files).
 - **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer;
   controls float over the video and fade during playback.
 - **Offline:** after one visit with internet the app and model work without a connection.
@@ -48,7 +51,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
   from CDNs (`pose-detector.client.ts`).
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
-  (`clip-store.client.ts`) and can be exported as video + `.nomol.json` (`export.ts`).
+  (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
 - Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
 - vitest + Testing Library (jsdom)
 - pnpm only, Node >= 24
@@ -80,7 +83,7 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.
 
-## Export format (`.nomol.json`, version 1)
+## Export format (`.nomol.txt`, JSON, version 1)
 
 `{ version, startedAt, durationMs, aspectRatio, zone, userAgent, frames }`. `frames` are the
 tracked person's 33 MediaPipe landmarks (`x`, `y` normalized to the image, `visibility`) with

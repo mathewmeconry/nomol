@@ -59,7 +59,6 @@ export default function App() {
         registration.active?.postMessage({ type: 'cache', urls });
       });
   }, []);
-
   return <Outlet />;
 }
 
