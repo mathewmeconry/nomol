@@ -92,11 +92,17 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
 - `app/lib/detection/`: pure, tested logic. `session.ts` decides when recordings start and stop
   (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and floor line.
-- `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop and drives
-  recording and replay.
+- `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
+  and finishes recordings, switches between live picture and replay.
+- `app/components/LiveControls.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the bar over the live
+  picture, the start hint, the loading/error screen.
 - `app/components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
-- `app/lib/recording/`: clips, recorder, storage, export, skeleton interpolation (`poseAt`).
+- `app/hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`
+  (MediaPipe loading), `use-tap-effects` (fullscreen and sound need a tap), camera hooks.
+- `app/lib/recording/`: clips, recorder, pre-roll, storage, export, skeleton interpolation
+  (`poseAt`). `capture.client.ts` gathers poses, skeleton frames and stills while recording and
+  turns them into a clip.
 - `app/lib/skeleton/`: replay skeleton. `yolox.ts` and `rtmpose.ts` pre/post-processing, box
   choice and crops (pure, tested), `rtmpose.worker.ts` inference, `refiner.client.ts` frame
   capture and the job queue.
