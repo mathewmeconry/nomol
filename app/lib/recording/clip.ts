@@ -1,4 +1,5 @@
 import { scalePose, type Pose } from '~/lib/detection/pose';
+import type { RunUp, SessionEvent } from '~/lib/detection/session';
 import { isOnFloor, scaleZone, type Zone } from '~/lib/detection/zone';
 
 /** Body points of the recorded person at a time (ms since the recording started). */
@@ -23,6 +24,16 @@ export type Clip = {
   /** Start zone and camera aspect ratio at recording time, so exports can be replayed. */
   zone: Zone;
   aspectRatio: number;
+  /** How it was recorded, for analyzing exports. Missing in clips stored before it existed. */
+  recordedWith?: RecordedWith;
+};
+
+export type RecordedWith = {
+  /** Commit the app was built from. */
+  appVersion: string;
+  startReason: Extract<SessionEvent, { type: 'start' }>['reason'];
+  /** Automatic start setting, null when off. */
+  runUp: RunUp | null;
 };
 
 /** Shown before the first element, e.g. the run-up. */

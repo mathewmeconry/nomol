@@ -1,7 +1,7 @@
 import type { Pose } from '~/lib/detection/pose';
 import { traceBack } from '~/lib/detection/session';
 import type { Zone } from '~/lib/detection/zone';
-import { routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
+import { routineRange, type Clip, type ClipFrame, type RecordedWith } from '~/lib/recording/clip';
 import { PREROLL_MAX_MS } from '~/lib/recording/preroll.client';
 import type { Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
@@ -32,6 +32,7 @@ export type ActiveRecording = {
   samples: SkeletonSample[];
   zone: Zone;
   aspectRatio: number;
+  recordedWith: RecordedWith;
 };
 
 /** Detection results kept for the pre-roll, so its part of the clip gets a skeleton too. */
@@ -44,6 +45,7 @@ export function beginRecording(
   startedAt: number,
   zone: Zone,
   aspectRatio: number,
+  start: Omit<RecordedWith, 'appVersion'>,
 ): ActiveRecording {
   return {
     recording,
@@ -54,6 +56,7 @@ export function beginRecording(
     samples: [],
     zone,
     aspectRatio,
+    recordedWith: { appVersion: __APP_VERSION__, ...start },
   };
 }
 
@@ -158,6 +161,7 @@ export function toClip(active: ActiveRecording, video: Blob, time: number) {
     thumbnail: still?.url ?? null,
     zone: active.zone,
     aspectRatio: active.aspectRatio,
+    recordedWith: active.recordedWith,
   };
   return { clip, routine };
 }

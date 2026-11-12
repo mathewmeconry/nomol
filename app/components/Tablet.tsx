@@ -150,6 +150,7 @@ export default function Tablet() {
           started.startedAt - (deliveredAt - time),
           zone,
           aspectRatio,
+          { startReason: result.event.reason, runUp },
         );
         activeRef.current = active;
         if (preroll) addPreroll(active, seenRef.current, video, result.event.pose, time);
