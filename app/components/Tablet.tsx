@@ -1,4 +1,4 @@
-import { Camera, Circle, SquareDashed, Volume2 } from 'lucide-react';
+import { Camera, Circle, SquareDashed, Volume2, Zap } from 'lucide-react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
@@ -21,11 +21,18 @@ import { loadCameraId, saveCameraId } from '~/lib/camera-choice';
 import useWakeLock from '~/hooks/use-wake-lock';
 import type { PoseDetector } from '~/lib/detection/pose-detector.client';
 import type { Pose } from '~/lib/detection/pose';
-import { initialSession, step, type SessionState } from '~/lib/detection/session';
+import {
+  initialSession,
+  step,
+  traceBack,
+  type RunUp,
+  type SessionState,
+} from '~/lib/detection/session';
 import { isInZone, type Zone } from '~/lib/detection/zone';
 import { drawPersonBox, drawStartSign, drawZone, prepareCanvas } from '~/lib/draw';
 import { insertFrame, routineRange, type Clip, type ClipFrame } from '~/lib/recording/clip';
 import { deleteClip, loadClips, saveClip, saveSkeleton } from '~/lib/recording/clip-store.client';
+import { PREROLL_MAX_MS, startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording, type Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import {
@@ -39,7 +46,7 @@ import {
 import { cropAround } from '~/lib/skeleton/rtmpose';
 import { playStartSound, unlockSound } from '~/lib/sound.client';
 import { cn } from '~/lib/utils';
-import { DEFAULT_ZONE, loadZone, saveZone } from '~/lib/zone-storage';
+import { DEFAULT_ZONE, loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
@@ -70,6 +77,15 @@ const STATUS_TEXT: Record<Status, string> = {
   armed: 'Warte auf Person in der Startzone',
   recording: 'Aufnahme läuft',
 };
+
+const START_MODES = [
+  { value: 'sign', label: 'Start mit Zeichen' },
+  { value: 'left', label: 'Auto von links' },
+  { value: 'right', label: 'Auto von rechts' },
+] as const;
+
+/** Detection results kept for the pre-roll, so its part of the clip gets a skeleton too. */
+type Seen = { time: number; poses: Pose[]; image: Promise<Blob> | null };
 
 const STATUS_STYLE: Record<Status, string> = {
   idle: 'text-emerald-300',
@@ -126,6 +142,11 @@ export default function Tablet() {
   const [zone, setZone] = useState<Zone>(() =>
     typeof window === 'undefined' ? DEFAULT_ZONE : loadZone(),
   );
+  const [runUp, setRunUp] = useState<RunUp | null>(() =>
+    typeof window === 'undefined' ? null : loadRunUp(),
+  );
+  const prerollRef = useRef<Preroll | null>(null);
+  const seenRef = useRef<Seen[]>([]);
   const [armedAt, setArmedAt] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [clips, setClips] = useState<Clip[]>([]);
@@ -192,6 +213,19 @@ export default function Tablet() {
     const timer = setTimeout(() => setArmedAt(null), ARMED_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [armedAt]);
+
+  const recording = status === 'recording';
+  // Automatic starts come late (see `startPreroll`), so recorders run ahead while waiting.
+  useEffect(() => {
+    if (!runUp || camera.status !== 'ready' || !detector || editingZone || recording) return;
+    const preroll = startPreroll(camera.stream);
+    prerollRef.current = preroll;
+    return () => {
+      prerollRef.current = null;
+      seenRef.current = [];
+      preroll.close();
+    };
+  }, [runUp, camera, detector, editingZone, recording]);
 
   // Sound may only start after a touch, so unlock it on the first one anywhere on the screen.
   useEffect(() => {
@@ -304,6 +338,46 @@ export default function Tablet() {
     });
   }
 
+  /** Adds the gymnast's poses and skeleton frames from the pre-roll, before the trigger. */
+  function addPreroll(active: ActiveRecording, pose: Pose, time: number) {
+    const video = videoRef.current;
+    const seen = seenRef.current.filter((frame) => frame.time >= active.startedAt);
+    const traced = traceBack(seen, pose, time, aspectRatio);
+    for (const frame of traced) {
+      active.frames.push({ time: frame.time - active.startedAt, pose: frame.pose });
+    }
+    if (!video) return;
+    const { width, height } = frameSize(video);
+    for (const frame of traced) {
+      const image = seen.find((other) => other.time === frame.time)?.image;
+      if (!image) continue;
+      const now = frame.time - active.startedAt;
+      const recent = active.frames.filter((f) => f.time <= now && f.time >= now - CROP_WINDOW_MS);
+      active.samples.push({
+        time: now,
+        image,
+        tracked: frame.pose,
+        fallback: cropAround(
+          recent.map((f) => f.pose),
+          width,
+          height,
+        ),
+      });
+    }
+  }
+
+  /** While the pre-roll runs: what was seen, and frames for the skeleton when someone is there. */
+  function rememberFrame(time: number, poses: Pose[]) {
+    const video = videoRef.current;
+    const seen = seenRef.current.filter((frame) => time - frame.time <= PREROLL_MAX_MS);
+    const lastImage = seen.filter((frame) => frame.image).at(-1);
+    const image =
+      video && poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
+        ? captureFrame(video)
+        : null;
+    seenRef.current = [...seen, { time, poses, image }];
+  }
+
   function recordStill(active: ActiveRecording, time: number) {
     const video = videoRef.current;
     const last = active.stills[active.stills.length - 1];
@@ -325,17 +399,24 @@ export default function Tablet() {
       poses,
       zone,
       armed: armedAt !== null,
+      runUp,
       aspectRatio,
     });
     sessionRef.current = result.state;
 
     if (result.event?.type === 'start' && camera.status === 'ready') {
-      activeRef.current = {
+      const preroll = prerollRef.current?.take() ?? null;
+      prerollRef.current = null;
+      const started = preroll ?? {
         recording: startRecording(camera.stream),
-        // The recorder only receives frames delivered from now on. Those were captured one
-        // delivery latency earlier, so the video's time 0 is the trigger frame's capture time
-        // plus the time detection took. Measured against the replay this lines up within a frame.
-        startedAt: time + (performance.now() - deliveredAt),
+        startedAt: performance.now(),
+      };
+      activeRef.current = {
+        recording: started.recording,
+        // A recorder only receives frames delivered after it started. Those were captured one
+        // delivery latency earlier, so the video's time 0 is its start minus that latency.
+        // Measured against the replay this lines up within a frame.
+        startedAt: started.startedAt - (deliveredAt - time),
         startedDate: new Date(),
         frames: [],
         stills: [],
@@ -343,8 +424,11 @@ export default function Tablet() {
         zone,
         aspectRatio,
       };
+      if (preroll) addPreroll(activeRef.current, result.event.pose, time);
       playStartSound();
       setArmedAt(null);
+    } else if (prerollRef.current) {
+      rememberFrame(time, poses);
     }
     const active = activeRef.current;
     if (active) {
@@ -372,7 +456,7 @@ export default function Tablet() {
     if (!surface) return;
     const { ctx, width, height } = surface;
     drawZone(ctx, zone, width, height);
-    if (!activeRef.current) drawStartSign(ctx, zone, width, height, performance.now());
+    if (!activeRef.current && !runUp) drawStartSign(ctx, zone, width, height, performance.now());
     if (activeRef.current && result.target) {
       drawPersonBox(ctx, result.target, width, height, '#ff6b70', 'Aufnahme');
     } else if (!activeRef.current) {
@@ -598,6 +682,31 @@ export default function Tablet() {
               {`${wideAngle.zoom.toLocaleString('de-CH')}×`}
             </Toggle>
           )}
+          <Select
+            value={runUp ?? 'sign'}
+            disabled={recording}
+            onValueChange={(value) => {
+              const next = value === 'left' || value === 'right' ? value : null;
+              saveRunUp(next);
+              setRunUp(next);
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label="Start"
+              className={cn(floating, 'max-w-40 border-0 sm:max-w-60', runUp && 'text-sky-300')}
+            >
+              <Zap />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {START_MODES.map((mode) => (
+                <SelectItem key={mode.value} value={mode.value}>
+                  {mode.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Toggle
             size="sm"
             pressed={editingZone}
@@ -640,10 +749,23 @@ export default function Tablet() {
             clips.length > 0 ? 'bottom-28' : 'bottom-6'
           }`}
         >
-          <p className="text-lg font-semibold">Aufnehmen? Arme über dem Kopf kreuzen</p>
-          <p className="text-sm text-slate-400">
-            in der Startzone · zur Kamera schauen · 1 Sekunde halten
-          </p>
+          {runUp ? (
+            <>
+              <p className="text-lg font-semibold">
+                Automatisch: Anlauf von {runUp === 'left' ? 'links' : 'rechts'} startet die Aufnahme
+              </p>
+              <p className="text-sm text-slate-400">
+                Startzone über Gerät und Landung · endet beim Weggehen
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-semibold">Aufnehmen? Arme über dem Kopf kreuzen</p>
+              <p className="text-sm text-slate-400">
+                in der Startzone · zur Kamera schauen · 1 Sekunde halten
+              </p>
+            </>
+          )}
         </div>
       )}
 

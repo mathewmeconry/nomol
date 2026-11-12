@@ -6,6 +6,8 @@ import {
   SIGN_HOLD_MS,
   initialSession,
   step,
+  traceBack,
+  type RunUp,
   type SessionEvent,
   type SessionState,
 } from './session';
@@ -22,7 +24,13 @@ type Scene = (time: number) => Pose[];
 function run(
   scene: Scene,
   durationMs: number,
-  options: { from?: SessionState; start?: number; armed?: boolean; aspectRatio?: number } = {},
+  options: {
+    from?: SessionState;
+    start?: number;
+    armed?: boolean;
+    runUp?: RunUp;
+    aspectRatio?: number;
+  } = {},
 ) {
   let state = options.from ?? initialSession;
   const events: { time: number; event: SessionEvent }[] = [];
@@ -33,6 +41,7 @@ function run(
       poses: scene(time),
       zone,
       armed: options.armed ?? false,
+      runUp: options.runUp ?? null,
       aspectRatio: options.aspectRatio ?? 1,
     });
     state = result.state;
@@ -110,6 +119,56 @@ describe('starting', () => {
   it('waits after the button until someone is in the start zone', () => {
     const { events } = run(() => [makePose({ x: 0.8, feetY: 0.9 })], 1000, { armed: true });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('starting automatically', () => {
+  /** Moves across the picture at `speed` image heights per second, from `from`. */
+  function moving(from: number, speed: number): Scene {
+    return (t) => {
+      const x = from + (speed * t) / 1000;
+      return x > -0.2 && x < 1.2 ? [makePose({ x, feetY: 0.9 })] : [];
+    };
+  }
+
+  it('starts when someone runs into the start zone from the run-up side', () => {
+    // Torso length here is 0.09, so 0.5 per second is ~5.5 torso lengths per second.
+    const { events } = run(moving(0, 0.5), 2000, { runUp: 'left' });
+    expect(events[0].event).toMatchObject({ type: 'start', reason: 'runUp' });
+    // Enters the zone at 600 ms.
+    expect(events[0].time).toBeGreaterThanOrEqual(600);
+    expect(events[0].time).toBeLessThan(700);
+  });
+
+  it('works with the run-up from the right', () => {
+    const { events } = run(moving(1, -0.5), 2000, { runUp: 'right' });
+    expect(events[0].event).toMatchObject({ type: 'start', reason: 'runUp' });
+  });
+
+  it('ignores people coming from the other side, walking or running', () => {
+    expect(run(moving(1, -0.15), 8000, { runUp: 'left' }).events).toEqual([]);
+    expect(run(moving(1, -0.5), 3000, { runUp: 'left' }).events).toEqual([]);
+  });
+
+  it('ignores someone standing in the zone, despite jitter', () => {
+    const jittery: Scene = (t) => [makePose({ x: 0.45 + 0.02 * Math.sin(t / 50), feetY: 0.9 })];
+    expect(run(jittery, LONG, { runUp: 'left' }).events).toEqual([]);
+  });
+
+  it('only starts by itself when switched on', () => {
+    expect(run(moving(0, 0.5), 2000).events).toEqual([]);
+  });
+
+  it('finds the runner in the frames before the start, not the person standing nearby', () => {
+    const runner = (t: number) => makePose({ x: 0.1 + (0.5 * t) / 1000, feetY: 0.9 });
+    const bystander = makePose({ x: 0.55, feetY: 0.9 });
+    const earlier = [0, 100, 200, 300, 400].map((time) => ({
+      time,
+      poses: [bystander, runner(time)],
+    }));
+    const found = traceBack(earlier, runner(500), 500, 1);
+    expect(found.map((frame) => frame.time)).toEqual([0, 100, 200, 300, 400]);
+    expect(found.every((frame, i) => frame.pose === earlier[i].poses[1])).toBe(true);
   });
 });
 

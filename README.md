@@ -42,6 +42,9 @@ points per frame, start zone, aspect ratio).
    must sit on the floor where the feet are: anything not standing on both feet counts as an
    element. Recordings stop ~6 s after the last element (or when the gymnast leaves the picture),
    and the replay loops just the routine.
+4. For apparatus like Sprung, pick **Auto von links/rechts** (the side the run-up comes from) and
+   draw the start zone over the apparatus and the landing. Each run-in starts a recording by
+   itself, including the 1.5–3 s before it was recognised.
 
 ## Scripts
 

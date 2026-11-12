@@ -1,4 +1,4 @@
-import { distance, scalePose, torsoCenter, type Point, type Pose } from './pose';
+import { distance, scalePose, torsoCenter, torsoLength, type Point, type Pose } from './pose';
 import { isStartSign } from './sign';
 import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
 
@@ -24,6 +24,20 @@ const MAX_JUMP = 0.15;
  * tracking catches up after a bad frame instead of waiting at a stale spot until `LOST_MS`.
  */
 const SEARCH_GROWTH_PER_S = 0.6;
+/**
+ * Automatic start: within this window, the person must have moved this many torso lengths
+ * towards the apparatus. On Sprung videos gymnasts came in at 2–9 torso lengths per second;
+ * someone standing only jitters by fractions of that, back and forth.
+ */
+const RUN_WINDOW_MS = 400;
+const RUN_MIN_SPAN_MS = 100;
+const RUN_MIN_TORSOS = 0.5;
+const RUN_MIN_SIGHTINGS = 4;
+/** Share of frame-to-frame steps that must go towards the apparatus. */
+const RUN_FORWARD_SHARE = 0.75;
+
+/** Automatic start: the side of the picture the run-up comes from. */
+export type RunUp = 'left' | 'right';
 
 export type Frame = {
   time: number;
@@ -32,6 +46,8 @@ export type Frame = {
   zone: Zone;
   /** "Aufnahme starten" was tapped and is waiting for a person in the start zone. */
   armed: boolean;
+  /** Set when recordings start by themselves as someone runs into the start zone. */
+  runUp: RunUp | null;
   /** Image width / height. */
   aspectRatio: number;
 };
@@ -47,7 +63,10 @@ type SignState = {
   waitForRelease: boolean;
 };
 
-type Idle = SignState & { kind: 'idle' };
+/** Where people were in a recent frame, to see who is running in. */
+type Seen = { time: number; people: { center: Point; torso: number }[] };
+
+type Idle = SignState & { kind: 'idle'; recent: Seen[] };
 
 type Recording = SignState & {
   kind: 'recording';
@@ -63,7 +82,7 @@ type Recording = SignState & {
 export type SessionState = Idle | Recording;
 
 export type SessionEvent =
-  | { type: 'start'; reason: 'sign' | 'button'; pose: Pose }
+  | { type: 'start'; reason: 'sign' | 'button' | 'runUp'; pose: Pose }
   | { type: 'stop'; reason: 'sign' | 'idle' | 'lost' };
 
 export type StepResult = {
@@ -78,6 +97,7 @@ export const initialSession: Idle = {
   signSince: null,
   signSeenAt: null,
   waitForRelease: false,
+  recent: [],
 };
 
 /**
@@ -135,10 +155,51 @@ function startRecording(pose: Pose, time: number, sign: SignState): Recording {
   };
 }
 
+/**
+ * Whether the person came in from the run-up side: followed back frame by frame through
+ * `recent`, they moved far enough towards the apparatus, mostly in that direction. Following
+ * them step by step (rather than comparing with whoever was nearest a moment ago) keeps people
+ * standing nearby and a detection that jumps for a frame from counting as movement.
+ */
+function isRunningIn(pose: Pose, recent: Seen[], time: number, runUp: RunUp): boolean {
+  const direction = runUp === 'left' ? 1 : -1;
+  const trail = [{ time, center: torsoCenter(pose), torso: torsoLength(pose) }];
+  for (const seen of [...recent].reverse()) {
+    const last = trail[trail.length - 1];
+    const reach = MAX_JUMP + (SEARCH_GROWTH_PER_S * (last.time - seen.time)) / 1000;
+    const before = seen.people
+      .filter((person) => distance(person.center, last.center) <= reach)
+      .sort((a, b) => distance(a.center, last.center) - distance(b.center, last.center))[0];
+    if (before) trail.push({ time: seen.time, ...before });
+  }
+  const first = trail[trail.length - 1];
+  if (trail.length < RUN_MIN_SIGHTINGS || time - first.time < RUN_MIN_SPAN_MS) return false;
+  const steps = trail.slice(1).map((older, i) => (trail[i].center.x - older.center.x) * direction);
+  const forward = steps.filter((step) => step > 0).length;
+  const torso = Math.max(...trail.map((seen) => seen.torso));
+  return (
+    forward >= RUN_FORWARD_SHARE * steps.length &&
+    (trail[0].center.x - first.center.x) * direction >= RUN_MIN_TORSOS * torso
+  );
+}
+
 function stepIdle(state: Idle, frame: Frame): StepResult {
   const inZone = frame.poses.filter((pose) => isInZone(pose, frame.zone));
   const signer = inZone.find(isStartSign);
   const { held, ...sign } = holdSign(state, signer !== undefined, frame.time);
+  const runUp = frame.runUp;
+  const recent: Seen[] = runUp
+    ? [
+        ...state.recent.filter((seen) => frame.time - seen.time <= RUN_WINDOW_MS),
+        {
+          time: frame.time,
+          people: frame.poses.map((pose) => ({
+            center: torsoCenter(pose),
+            torso: torsoLength(pose),
+          })),
+        },
+      ]
+    : [];
 
   if (frame.armed && inZone.length > 0) {
     const center = zoneCenter(frame.zone);
@@ -150,7 +211,18 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
     };
   }
 
-  if (!signer || !held) return { state: { kind: 'idle', ...sign }, event: null, target: null };
+  const runner = runUp && inZone.find((pose) => isRunningIn(pose, state.recent, frame.time, runUp));
+  if (runner) {
+    return {
+      state: startRecording(runner, frame.time, sign),
+      event: { type: 'start', reason: 'runUp', pose: runner },
+      target: runner,
+    };
+  }
+
+  if (!signer || !held) {
+    return { state: { kind: 'idle', ...sign, recent }, event: null, target: null };
+  }
   return {
     state: startRecording(signer, frame.time, justUsed(sign)),
     event: { type: 'start', reason: 'sign', pose: signer },
@@ -176,7 +248,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
   const { held, ...sign } = holdSign(state, isStartSign(pose), frame.time);
   if (held) {
     return {
-      state: { kind: 'idle', ...justUsed(sign) },
+      state: { kind: 'idle', ...justUsed(sign), recent: [] },
       event: { type: 'stop', reason: 'sign' },
       target: pose,
     };
@@ -191,6 +263,39 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
     event: null,
     target: pose,
   };
+}
+
+/**
+ * Follows the person who started a recording back through earlier frames (oldest first), the
+ * same way the recording follows them forwards. Fills the part kept from before the start.
+ */
+export function traceBack(
+  earlier: { time: number; poses: Pose[] }[],
+  pose: Pose,
+  time: number,
+  aspectRatio: number,
+): { time: number; pose: Pose }[] {
+  const found: { time: number; pose: Pose }[] = [];
+  let target = torsoCenter(scalePose(pose, aspectRatio));
+  let lastSeen = time;
+  for (const frame of [...earlier].reverse()) {
+    if (frame.time >= time) continue;
+    if (lastSeen - frame.time > LOST_MS) break;
+    const reach = MAX_JUMP + (SEARCH_GROWTH_PER_S * (lastSeen - frame.time)) / 1000;
+    let best: { pose: Pose; center: Point } | null = null;
+    for (const candidate of frame.poses) {
+      const center = torsoCenter(scalePose(candidate, aspectRatio));
+      const gap = distance(center, target);
+      if (gap <= reach && (!best || gap < distance(best.center, target))) {
+        best = { pose: candidate, center };
+      }
+    }
+    if (!best) continue;
+    found.push({ time: frame.time, pose: best.pose });
+    target = best.center;
+    lastSeen = frame.time;
+  }
+  return found.reverse();
 }
 
 function nearest(poses: Pose[], point: Point): Pose {

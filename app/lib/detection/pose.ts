@@ -49,6 +49,11 @@ export function torsoCenter(pose: Pose): Point {
   return midpoint(hipCenter(pose), midpoint(pose[LM.leftShoulder], pose[LM.rightShoulder]));
 }
 
+/** Shoulders to hips; unlike `bodySize` it doesn't depend on the legs being found. */
+export function torsoLength(pose: Pose): number {
+  return distance(hipCenter(pose), midpoint(pose[LM.leftShoulder], pose[LM.rightShoulder]));
+}
+
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }

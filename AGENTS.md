@@ -13,7 +13,12 @@ Requirements, as agreed with the owner:
 - **Starting:** a gymnast crosses their forearms above the head, facing the camera, held ~1 s,
   inside the start zone. Signs outside the zone don't count. Alternatively someone taps
   "Aufnahme starten"; the camera then follows the person in the start zone (waits up to 20 s).
-- **Nothing is recorded without a sign or button press.** No background recording.
+- **Automatic start** (e.g. Sprung), chosen per device ("Auto von links/rechts"): a recording
+  starts when someone runs into the start zone from the run-up side. Walkers come from the other
+  side and must not trigger it, nor people standing nearby. The trigger comes late (the run-up is
+  usually outside the picture), so two staggered recorders run while waiting and the older one
+  becomes the clip: it starts 1.5–3 s before the trigger. Nothing else is kept.
+- **Nothing is recorded without a sign, button press or automatic start.**
 - **Following:** only the person who started is tracked; others in the picture are ignored and
   get no boxes.
 - **Stopping:** when the recorded gymnast shows the start sign (held ~1 s, anywhere in the
@@ -45,8 +50,9 @@ Requirements, as agreed with the owner:
 - **No server for now.** Everything runs and stays on the device. A server is a later discussion.
 - **Privacy:** never commit or publish videos or exports of people (`.gitignore` blocks them).
 
-Decided against (don't reintroduce): automatic scoring in the PoC, a rolling buffer or saving a
-clip after the fact, a salute as start sign, coach comments, a film-strip timeline.
+Decided against (don't reintroduce): automatic scoring in the PoC, saving a clip after the fact
+(the pre-roll of the automatic start is the only look-back), a salute as start sign, coach
+comments, a film-strip timeline.
 
 UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
@@ -125,6 +131,13 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   ~190 ms per crop on a laptop, MediaPipe heavy on the GPU ~35 ms per frame. End to end on the
   handstand video (11 s clip, 75 frames) YOLOX + RTMPose took ~30 s on a laptop and left 4–6
   frames with fewer than 5 of 9 main keypoints (MediaPipe crops only: 9), all blurred kick-ups.
+- Automatic start, from three Sprung slow-motion videos (Pixel 8, 240 fps, played back at real
+  speed): gymnasts crossed the picture at 2–9 torso lengths per second and were recognised
+  0.1–0.4 s after appearing (also at 15 and 10 detections per second). The person is followed
+  back through the last 0.4 s: at least 4 sightings, ¾ of the steps towards the apparatus,
+  ≥ 0.5 torso lengths in total. Mirrored (coming from the wrong side) none started, except one
+  at 10 detections per second where the gymnast appeared next to someone standing. Browsers
+  can't record slow motion (Android's high-speed capture is for native apps only).
 - Start sign from far away: further than ~half the picture height, MediaPipe heavy rates crossed
   wrists at 0.1–0.5 visibility although their positions are right (phone frames shrunk to ½, ⅓
   and ¼: sign recognised in 7 of 8 at each size once arms needn't be visible).
