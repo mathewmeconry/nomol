@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import type { Clip } from '~/lib/recording/clip';
 
 type Props = {
@@ -5,12 +6,27 @@ type Props = {
   /** Highlighted clip, if one is open. */
   currentId: string | null;
   onSelect: (clip: Clip) => void;
+  /**
+   * Scroll position, kept by the parent: the strip is remounted with each clip it opens, and
+   * would otherwise jump back to the newest clip.
+   */
+  scrollLeftRef: RefObject<number>;
 };
 
 /** The latest recordings as thumbnails, newest first. */
-export default function ClipStrip({ clips, currentId, onSelect }: Props) {
+export default function ClipStrip({ clips, currentId, onSelect, scrollLeftRef }: Props) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (stripRef.current) stripRef.current.scrollLeft = scrollLeftRef.current;
+  }, [scrollLeftRef]);
+
   return (
-    <div className="flex max-w-full gap-2 overflow-x-auto" aria-label="Letzte Aufnahmen">
+    <div
+      ref={stripRef}
+      onScroll={(event) => (scrollLeftRef.current = event.currentTarget.scrollLeft)}
+      className="flex max-w-full gap-2 overflow-x-auto"
+      aria-label="Letzte Aufnahmen"
+    >
       {clips.map((clip) => (
         <button
           key={clip.id}

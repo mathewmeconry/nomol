@@ -61,6 +61,7 @@ export default function Tablet() {
   const activeRef = useRef<ActiveRecording | null>(null);
   const prerollRef = useRef<Preroll | null>(null);
   const seenRef = useRef<Seen[]>([]);
+  const clipStripScrollRef = useRef(0);
 
   const [zone, setZone] = useState<Zone>(() =>
     typeof window === 'undefined' ? DEFAULT_ZONE : loadZone(),
@@ -257,6 +258,7 @@ export default function Tablet() {
     <ClipStrip
       clips={clips}
       currentId={showReplay ? currentId : null}
+      scrollLeftRef={clipStripScrollRef}
       onSelect={(clip) => {
         setCurrentId(clip.id);
         setView('replay');
