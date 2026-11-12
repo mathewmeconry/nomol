@@ -57,6 +57,9 @@ export function createSkeletonRefiner(models: { pose: string; detector: string }
   let ready: Promise<void> | null = null;
   let nextId = 0;
   let queue = Promise.resolve();
+  /** Pending while paused (see `pause`). */
+  let unpaused = Promise.resolve();
+  let resume: (() => void) | null = null;
 
   worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     const message = event.data;
@@ -103,6 +106,7 @@ export function createSkeletonRefiner(models: { pose: string; detector: string }
       sample.time >= job.first.startMs && sample.time <= job.first.endMs;
     const ordered = [...job.samples.filter(inFirst), ...job.samples.filter((s) => !inFirst(s))];
     for (const [i, sample] of ordered.entries()) {
+      await unpaused;
       if (job.isCancelled()) return;
       job.onProgress({ stage: 'compute', percent: Math.floor((i / ordered.length) * 100) });
       job.onFrame({ time: sample.time, pose: await poseOf(sample) });
@@ -116,6 +120,19 @@ export function createSkeletonRefiner(models: { pose: string; detector: string }
       const result = queue.then(() => run(job));
       queue = result.catch(() => {});
       return result;
+    },
+    /**
+     * Holds off between frames, e.g. while recording: on a Pixel 8 computing the skeleton
+     * alongside dropped the recording from ~43 to ~25 fps, with gaps up to 0.25 s, and live
+     * detection from ~10 to ~6.5 per second.
+     */
+    pause() {
+      if (resume) return;
+      unpaused = new Promise((resolve) => (resume = resolve));
+    },
+    resume() {
+      resume?.();
+      resume = null;
     },
     close() {
       worker.terminate();

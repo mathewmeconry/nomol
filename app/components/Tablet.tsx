@@ -51,7 +51,7 @@ export default function Tablet() {
   const wideAngle = useWideAngle(camera.status === 'ready' ? camera.stream : null);
   const poseDetector = usePoseDetector();
   const { detector } = poseDetector;
-  const { clips, skeletonProgress, add: addClip, remove: removeClip } = useClips();
+  const { clips, skeletonProgress, add: addClip, remove: removeClip, pauseSkeleton } = useClips();
   const soundReady = useTapEffects();
   useWakeLock();
 
@@ -95,6 +95,9 @@ export default function Tablet() {
     const timer = setTimeout(() => setArmedAt(null), ARMED_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [armedAt]);
+
+  const onRecording = useEffectEvent(pauseSkeleton);
+  useEffect(() => onRecording(recording), [recording]);
 
   // Automatic starts come late (see `startPreroll`), so recorders run ahead while waiting.
   useEffect(() => {

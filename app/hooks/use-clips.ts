@@ -25,6 +25,7 @@ export default function useClips() {
   const refinerRef = useRef<SkeletonRefiner | null>(null);
   /** Clips deleted or dropped, so their skeleton computation stops. */
   const removedRef = useRef(new Set<string>());
+  const pausedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +83,10 @@ export default function useClips() {
     first: { startMs: number; endMs: number },
   ) {
     if (samples.length === 0) return;
-    refinerRef.current ??= createSkeletonRefiner(SKELETON_MODELS);
+    if (!refinerRef.current) {
+      refinerRef.current = createSkeletonRefiner(SKELETON_MODELS);
+      if (pausedRef.current) refinerRef.current.pause();
+    }
     let skeleton: ClipFrame[] = [];
     const setProgress = (progress: SkeletonProgress | null) =>
       setSkeletonProgress((previous) => {
@@ -107,5 +111,12 @@ export default function useClips() {
       .catch(() => setProgress({ stage: 'failed', percent: 0 }));
   }
 
-  return { clips, skeletonProgress, add, remove };
+  /** The skeleton waits while the phone needs its power, e.g. while recording. */
+  function pauseSkeleton(paused: boolean) {
+    pausedRef.current = paused;
+    if (paused) refinerRef.current?.pause();
+    else refinerRef.current?.resume();
+  }
+
+  return { clips, skeletonProgress, add, remove, pauseSkeleton };
 }

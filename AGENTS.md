@@ -67,8 +67,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
-  from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 150 ms per frame
-  (median over the first 3 s of detection), the lite model takes over. MediaPipe drives
+  from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 100 ms per frame
+  (median over 3 s of detection, checked again and again since phones slow down as they heat
+  up), the lite model takes over. MediaPipe drives
   everything live (sign, tracking, stop, trimming).
 - Replay skeleton: YOLOX-s (human-art) finds the people, RTMPose-m (body7, 256×192) the
   keypoints, both Apache-2.0, with `onnxruntime-web` in a worker (`app/lib/skeleton/`). While
@@ -76,7 +77,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   afterwards, routine first: YOLOX (WebGPU) → the box containing MediaPipe's torso centre →
   RTMPose (WASM, up to 4 threads) on a crop around it. Without WebGPU, or if no box contains the gymnast, the crop
   comes from MediaPipe's poses. Models in `public/models/` (`yolox-s.onnx` 36 MB,
-  `rtmpose-m.onnx` 54 MB, from openmmlab's ONNX SDK releases).
+  `rtmpose-m.onnx` 54 MB, from openmmlab's ONNX SDK releases). Paused while recording.
 - Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
   every ~3 s, and scrubbing the replay looked frozen while each seek decoded seconds of video.
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
@@ -124,6 +125,11 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   the right way up, full 19/17, heavy 31/21. Going into a handstand the skeleton flips between
   upright and upside down, so the person is followed by the torso centre (middle of shoulders
   and hips, unchanged by a flip), and the search radius widens while they aren't found.
+- While recording, everyone else in the picture is remembered and keeps their own skeleton, so the
+  gymnast can move far between frames (a salto moved the torso 0.32 in 67 ms) without the tracker
+  switching to a coach standing by. Someone who was hidden behind the gymnast can't be known; when
+  the gymnast leaves at the side, only a skeleton close by and of similar size counts as them.
+  Checked on six recordings (Sprung, Reck, handstands, a busy hall) traced frame by frame.
 - "On the floor" needs both ankles near the floor line and both knees ≥ 0.1 body sizes below the
   hips (standing measured ≥ 0.13, a raised leg ≤ 0). Ankles alone fail close to a low phone
   camera: a raised foot still looks near the floor line, and feet are often out of the picture
@@ -151,6 +157,16 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   ≥ 0.5 torso lengths in total. Mirrored (coming from the wrong side) none started, except one
   at 10 detections per second where the gymnast appeared next to someone standing. Browsers
   can't record slow motion (Android's high-speed capture is for native apps only).
+  A real-speed run in the hall (camera on a stacked mat, zone nearly the whole picture) started
+  1.2–1.4 s in at 15–30 detections per second, ~2.5 s in (after the landing) at 5–6, and never
+  at 4 or fewer. Following people back further between sightings or needing only 3 sightings
+  didn't help (the latter started on two people sitting side by side).
+- Phone load, Pixel 8 (measured over adb, `chrome://inspect`): MediaPipe heavy took 25 ms per
+  frame at first; after ~45 minutes of camera and models it ran hot (thermal status critical)
+  and took 100–300 ms. While the replay skeleton was computing (~1.3 s per frame there),
+  recordings dropped from ~43 to ~25 fps with gaps up to 0.25 s and live detection slowed by a
+  third; busy CPU threads alone barely mattered. Automatic mode's two pre-roll recorders cost
+  another ~40 % of the detection rate. In the dark the camera delivers only ~14 fps.
 - Start sign from far away: further than ~half the picture height, MediaPipe heavy rates crossed
   wrists at 0.1–0.5 visibility although their positions are right (phone frames shrunk to ½, ⅓
   and ¼: sign recognised in 7 of 8 at each size once arms needn't be visible).
@@ -158,16 +174,19 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.
 
-## Export format (`.nomol.txt`, JSON, version 2)
+## Export format (`.nomol.txt`, JSON, version 3)
 
-`{ version, startedAt, durationMs, aspectRatio, zone, userAgent, frames, skeleton }`. `frames`
+`{ version, appVersion, startedAt, durationMs, aspectRatio, zone, startReason, runUp, userAgent,
+frames, skeleton }`. `appVersion` is the commit that recorded the clip, `startReason` `sign`,
+`button` or `runUp`, `runUp` the automatic start setting (`left`, `right` or null); all three are
+null for clips recorded before version 3. `frames`
 are the tracked person's 33 MediaPipe landmarks (`x`, `y` normalized to the image, `visibility`)
 with `time` in ms relative to the video's start; times can be slightly negative. Only frames
 while recording are included, so start detection can't be replayed from an export, but stop
 timing, tracking and skeleton quality can be analyzed alongside the video. `skeleton` is the
 RTMPose replay skeleton (~10 per second) in the same 33-point layout; landmarks RTMPose doesn't
 have (hands, feet details) and unsure keypoints have visibility 0. It may be partial if exported
-before it finished. Version 1 had no `skeleton`.
+before it finished. Version 1 had no `skeleton`, version 2 no `appVersion`, `startReason`, `runUp`.
 
 ## Testing in a browser
 

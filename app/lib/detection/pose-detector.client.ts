@@ -11,11 +11,15 @@ const modelUrl = (size: 'heavy' | 'lite') =>
 /**
  * The heavy model is preferred: on a handstand recording it found the gymnast in every frame
  * where lite lost them in a fifth, and got upside-down poses right more often. It is ~3.5×
- * slower, so on devices where it takes longer than this per frame, lite takes over. Below that
- * rate the sign and tracking get sluggish; the video itself always records at full frame rate.
+ * slower, so on devices where it takes longer than this per frame, lite takes over. Slower than
+ * that, the sign and tracking get sluggish, and the automatic start missed runs below ~5
+ * detections per second.
  */
-const SLOW_MS = 150;
-/** How long heavy is measured (median detection time) before deciding. */
+const SLOW_MS = 100;
+/**
+ * Heavy is measured over this much detection time (median), again and again: phones slow down
+ * as they heat up. A Pixel 8 took 25 ms per frame at first and 100–300 ms after ~45 minutes.
+ */
 const MEASURE_MS = 3000;
 
 /** Spotters and waiting gymnasts are often in the picture too. */
@@ -45,7 +49,7 @@ export async function createPoseDetector(
   }
 
   let landmarker = await create('heavy', onProgress);
-  const timings: number[] = [];
+  let timings: number[] = [];
   let measuring = true;
 
   return {
@@ -55,9 +59,10 @@ export async function createPoseDetector(
       if (measuring) {
         timings.push(performance.now() - start);
         if (timings.reduce((sum, ms) => sum + ms, 0) >= MEASURE_MS) {
-          measuring = false;
           const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
+          timings = [];
           if (median > SLOW_MS) {
+            measuring = false;
             // Swapped between frames: detection is synchronous, so no frame sees a closed model.
             void create('lite').then((lite) => {
               landmarker.close();
