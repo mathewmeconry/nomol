@@ -15,6 +15,7 @@ import { Toggle } from '~/components/ui/toggle';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useCameras from '~/hooks/use-cameras';
+import useDragSpot from '~/hooks/use-drag-spot';
 import useWideAngle from '~/hooks/use-wide-angle';
 import { loadCameraId, saveCameraId } from '~/lib/camera-choice';
 import useWakeLock from '~/hooks/use-wake-lock';
@@ -133,6 +134,9 @@ export default function Tablet() {
   const [editingZone, setEditingZone] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [soundReady, setSoundReady] = useState(false);
+  /** The small live picture over the replay can be moved off the part the coach looks at. */
+  const livePictureRef = useRef<HTMLDivElement>(null);
+  const livePicture = useDragSpot();
 
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
@@ -464,11 +468,16 @@ export default function Tablet() {
       )}
 
       <div
+        ref={livePictureRef}
         className={
           showReplay
-            ? 'absolute top-24 right-3 z-10 w-1/3 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl sm:top-16 sm:w-1/4'
+            ? cn(
+                'absolute z-10 w-1/3 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl sm:w-1/4',
+                !livePicture.style && 'top-24 right-3 sm:top-16',
+              )
             : 'absolute inset-0 flex items-center justify-center'
         }
+        style={showReplay ? livePicture.style : undefined}
       >
         <div
           className="relative"
@@ -502,9 +511,13 @@ export default function Tablet() {
           {showReplay && (
             <button
               type="button"
-              aria-label="Live-Bild gross anzeigen"
-              onClick={() => setView('live')}
-              className="absolute inset-0"
+              aria-label="Live-Bild gross anzeigen, zum Verschieben ziehen"
+              onPointerDown={(event) => livePicture.onPointerDown(event, livePictureRef.current)}
+              onPointerMove={livePicture.onPointerMove}
+              onClick={() => {
+                if (!livePicture.wasDragged()) setView('live');
+              }}
+              className="absolute inset-0 cursor-move touch-none"
             >
               <span
                 className={`absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs font-semibold ${

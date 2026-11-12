@@ -31,7 +31,7 @@ Requirements, as agreed with the owner:
   Chrome on Android usually lists only front and back; there a zoom button (e.g. "0,5×") reaches
   the ultra-wide lens if the phone allows zooming below 1×.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
-  next gymnast. Speeds ¼× / ½× / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
+  next gymnast; the small live picture over it can be dragged anywhere, a tap on it goes live. Speeds ¼× / ½× / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts. The replay
   skeleton is RTMPose, computed after the recording with a progress bar above the timeline; parts
   not computed yet show no skeleton (never MediaPipe's live one, it's wrong upside down).
