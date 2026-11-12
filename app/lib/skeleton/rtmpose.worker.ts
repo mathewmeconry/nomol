@@ -31,7 +31,9 @@ const POSE_MB = 54;
 let pose: ort.InferenceSession | null = null;
 /**
  * Only on the GPU: on the CPU YOLOX takes over a second per frame. (RTMPose is the other way
- * round: onnxruntime-web's WebGPU backend computes it wrong, checked against Python.)
+ * round: onnxruntime-web's WebGPU backend computes it wrong in its default NHWC layout. With
+ * `preferredLayout: 'NCHW'` it's right, but no faster than WASM on several threads, which the
+ * service worker's cross-origin isolation allows, and it leaves the GPU to live detection.)
  */
 let detector: ort.InferenceSession | null = null;
 const detectorCanvas = new OffscreenCanvas(DETECTOR_SIZE, DETECTOR_SIZE);
@@ -100,7 +102,11 @@ function cropPixels(frame: ImageBitmap, crop: Crop) {
   return cropCtx.getImageData(0, 0, INPUT_WIDTH, INPUT_HEIGHT).data;
 }
 
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+// onnxruntime is bundled into this file, so its WASM threads start this file too (named
+// `em-pthread`); they must keep onnxruntime's message handler, or loading hangs.
+if (!self.name.startsWith('em-pthread')) self.onmessage = handle;
+
+async function handle(event: MessageEvent<WorkerRequest>) {
   const request = event.data;
   try {
     if (request.type === 'load') {
@@ -129,4 +135,4 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const message = error instanceof Error ? error.message : String(error);
     reply({ type: 'error', id: request.type === 'pose' ? request.id : undefined, message });
   }
-};
+}

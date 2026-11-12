@@ -74,7 +74,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   keypoints, both Apache-2.0, with `onnxruntime-web` in a worker (`app/lib/skeleton/`). While
   recording, the frame (long side 640) and MediaPipe's pose are saved 10× per second as JPEG;
   afterwards, routine first: YOLOX (WebGPU) → the box containing MediaPipe's torso centre →
-  RTMPose (WASM) on a crop around it. Without WebGPU, or if no box contains the gymnast, the crop
+  RTMPose (WASM, up to 4 threads) on a crop around it. Without WebGPU, or if no box contains the gymnast, the crop
   comes from MediaPipe's poses. Models in `public/models/` (`yolox-s.onnx` 36 MB,
   `rtmpose-m.onnx` 54 MB, from openmmlab's ONNX SDK releases).
 - Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
@@ -82,7 +82,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
   (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
 - Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model, RTMPose model),
-  production only.
+  production only. It also adds the COOP/COEP headers GitHub Pages can't send, making the page
+  cross-origin isolated so onnxruntime's WASM can use threads; the page reloads once when the
+  worker takes over. Anything loaded from another origin must allow it (CORS or CORP).
 - vitest + Testing Library (jsdom)
 - pnpm only, Node >= 24
 - Database (when needed): Prisma with Postgres. Not added yet; don't add it without a feature
@@ -133,8 +135,13 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   than the gymnast's median size over the last 0.5 s: MediaPipe sometimes collapses the skeleton
   onto part of the body, and the combined extent instead made the person too small.
 - onnxruntime-web 1.30 WebGPU computes RTMPose-m wrong (keypoints pinned to the crop edges; the
-  same input in Python is fine) while YOLOX-s works on WebGPU (~90 ms). On WASM RTMPose-m takes
-  ~190 ms per crop on a laptop, MediaPipe heavy on the GPU ~35 ms per frame. End to end on the
+  same input in Python is fine) while YOLOX-s works on WebGPU (~90 ms). The bug is its default
+  NHWC layout: with `preferredLayout: 'NCHW'` the result matches WASM (~60 ms; 1.31.1 flipped 2
+  of 192 frames). On WASM RTMPose-m takes ~150–190 ms per crop on a laptop with 1 thread, ~51 ms
+  with 4 (no gain from 8), MediaPipe heavy on the GPU ~35 ms per frame. Threads won over WebGPU
+  in the full pipeline with live detection running (161 vs 177 ms per frame incl. YOLOX, 249 ms
+  before) and leave the GPU to MediaPipe. onnxruntime's threads start the bundled worker file
+  itself (named `em-pthread`), so the worker must not take their messages. End to end on the
   handstand video (11 s clip, 75 frames) YOLOX + RTMPose took ~30 s on a laptop and left 4–6
   frames with fewer than 5 of 9 main keypoints (MediaPipe crops only: 9), all blurred kick-ups.
 - Automatic start, from three Sprung slow-motion videos (Pixel 8, 240 fps, played back at real

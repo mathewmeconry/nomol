@@ -20,6 +20,23 @@ self.addEventListener('message', (event) => {
   );
 });
 
+// Cross-origin isolation, which GitHub Pages can't send as headers: it lets onnxruntime compute
+// the replay skeleton on several threads (RTMPose ~3× faster). Everything the app loads from other
+// origins allows it (CORS or Cross-Origin-Resource-Policy).
+function isolated(response) {
+  if (response.type === 'opaque' || new URL(response.url).origin !== self.location.origin) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || !request.url.startsWith('http')) return;
@@ -33,10 +50,10 @@ self.addEventListener('fetch', (event) => {
         if (response.status === 200 || response.type === 'opaque') {
           await cache.put(request, response.clone());
         }
-        return response;
+        return isolated(response);
       } catch (error) {
         const cached = await cache.match(request);
-        if (cached) return cached;
+        if (cached) return isolated(cached);
         throw error;
       }
     })(),
