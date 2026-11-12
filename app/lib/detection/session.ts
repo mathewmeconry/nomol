@@ -15,6 +15,27 @@ const SIGN_DROPOUT_MS = 250;
  * idle tail (`routineRange`).
  */
 export const IDLE_MS = 6000;
+/**
+ * Largest torso jump between sightings of the recorded gymnast. Going into a salto the torso
+ * centre moved 0.32 in one frame (67 ms). Larger than `MAX_JUMP`, because the people around are
+ * known (`others`) and can't be taken for the gymnast.
+ */
+const MAX_GYMNAST_JUMP = 0.35;
+/**
+ * The gymnast's torso length changes by at most this factor between sightings. MediaPipe's
+ * collapses in handstands changed it up to ~2.3×; someone else far behind was 6× smaller.
+ */
+const MAX_SIZE_CHANGE = 3;
+/**
+ * Torso centre closer than this many torso lengths to the left or right edge: leaving the
+ * picture. Someone walking out was 0.3–0.5 torso lengths from the edge, a gymnast landing near
+ * it ~1. Nobody leaves in a handstand, so the size must stay closer too: the girl who had been
+ * hidden behind someone walking out close to the camera was 2.5× smaller.
+ */
+const SIDE_TORSOS = 0.75;
+const MAX_SIZE_CHANGE_AT_SIDE = 1.5;
+/** Skeletons closer than this many torso lengths are taken as the same person (`othersThan`). */
+const SAME_PERSON_TORSOS = 0.7;
 /** Stop when the tracked person has not been seen for this long (left the picture). */
 export const LOST_MS = 1500;
 /** Largest torso jump between frames (image heights) that still counts as the same person. */
@@ -71,7 +92,15 @@ type Idle = SignState & { kind: 'idle'; recent: Seen[] };
 type Recording = SignState & {
   kind: 'recording';
   target: Point;
+  /** Torso length when last seen. */
+  size: number;
   lastSeen: number;
+  /**
+   * Where everyone else was in the last frame (torso centres). Someone who was another person a
+   * moment ago stays another person: when the gymnast flipped fast or left the picture, the
+   * nearest person was often a coach standing by or someone walking past.
+   */
+  others: Point[];
   /**
    * Last time the gymnast wasn't standing on both feet, i.e. did an element. Null until the
    * first one, so waiting before the routine never stops the recording.
@@ -145,11 +174,13 @@ export function step(state: SessionState, frame: Frame): StepResult {
   };
 }
 
-function startRecording(pose: Pose, time: number, sign: SignState): Recording {
+function startRecording(pose: Pose, poses: Pose[], time: number, sign: SignState): Recording {
   return {
     kind: 'recording',
     target: torsoCenter(pose),
+    size: torsoLength(pose),
     lastSeen: time,
+    others: othersThan(pose, poses),
     lastElementAt: null,
     ...sign,
   };
@@ -205,7 +236,7 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
     const center = zoneCenter(frame.zone);
     const pose = nearest(inZone, center);
     return {
-      state: startRecording(pose, frame.time, sign),
+      state: startRecording(pose, frame.poses, frame.time, sign),
       event: { type: 'start', reason: 'button', pose },
       target: pose,
     };
@@ -214,7 +245,7 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
   const runner = runUp && inZone.find((pose) => isRunningIn(pose, state.recent, frame.time, runUp));
   if (runner) {
     return {
-      state: startRecording(runner, frame.time, sign),
+      state: startRecording(runner, frame.poses, frame.time, sign),
       event: { type: 'start', reason: 'runUp', pose: runner },
       target: runner,
     };
@@ -224,26 +255,46 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
     return { state: { kind: 'idle', ...sign, recent }, event: null, target: null };
   }
   return {
-    state: startRecording(signer, frame.time, justUsed(sign)),
+    state: startRecording(signer, frame.poses, frame.time, justUsed(sign)),
     event: { type: 'start', reason: 'sign', pose: signer },
     target: signer,
   };
 }
 
 function stepRecording(state: Recording, frame: Frame): StepResult {
-  const candidates = frame.poses.filter(
-    (pose) =>
-      distance(torsoCenter(pose), state.target) <=
-      MAX_JUMP + (SEARCH_GROWTH_PER_S * (frame.time - state.lastSeen)) / 1000,
-  );
+  // Last seen at the side of the picture, the gymnast is probably leaving; the one showing up
+  // next to that spot was often someone who had been hidden behind them. (Not at the top: a
+  // salto may leave the picture there and come back.)
+  const atSide =
+    Math.min(state.target.x, frame.aspectRatio - state.target.x) < SIDE_TORSOS * state.size;
+  const reach = atSide
+    ? MAX_JUMP
+    : MAX_GYMNAST_JUMP + (SEARCH_GROWTH_PER_S * (frame.time - state.lastSeen)) / 1000;
+  const maxSizeChange = atSide ? MAX_SIZE_CHANGE_AT_SIDE : MAX_SIZE_CHANGE;
+  const claimed = claimedByOthers(state.others, frame.poses);
+  const taken = new Set(claimed.values());
+  const candidates = frame.poses.filter((pose) => {
+    const size = torsoLength(pose);
+    return (
+      !taken.has(pose) &&
+      distance(torsoCenter(pose), state.target) <= reach &&
+      Math.max(size / state.size, state.size / size) <= maxSizeChange
+    );
+  });
   if (candidates.length === 0) {
     if (frame.time - state.lastSeen > LOST_MS) {
       return { state: initialSession, event: { type: 'stop', reason: 'lost' }, target: null };
     }
-    return { state, event: null, target: null };
+    // The others are followed on (or kept where last seen) until the gymnast is found again.
+    const others = state.others.map((other) => {
+      const pose = claimed.get(other);
+      return pose ? torsoCenter(pose) : other;
+    });
+    return { state: { ...state, others }, event: null, target: null };
   }
 
   const pose = nearest(candidates, state.target);
+  const others = othersThan(pose, frame.poses);
   // The gymnast ends the recording with the start sign, anywhere in the picture.
   const { held, ...sign } = holdSign(state, isStartSign(pose), frame.time);
   if (held) {
@@ -259,10 +310,50 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
   }
 
   return {
-    state: { ...state, ...sign, target: torsoCenter(pose), lastSeen: frame.time, lastElementAt },
+    state: {
+      ...state,
+      ...sign,
+      target: torsoCenter(pose),
+      size: torsoLength(pose),
+      lastSeen: frame.time,
+      others,
+      lastElementAt,
+    },
     event: null,
     target: pose,
   };
+}
+
+/**
+ * Everyone but the gymnast. MediaPipe sometimes puts a second, partial skeleton onto the
+ * gymnast: on a trampoline its torso centre was 0.55 torso lengths off, while a coach standing
+ * next to the landing was 0.8 away.
+ */
+function othersThan(pose: Pose, poses: Pose[]): Point[] {
+  return poses
+    .filter(
+      (other) =>
+        distance(torsoCenter(other), torsoCenter(pose)) >
+        SAME_PERSON_TORSOS * Math.max(torsoLength(other), torsoLength(pose)),
+    )
+    .map(torsoCenter);
+}
+
+/**
+ * Each of the others takes their nearest skeleton in the new frame, so they can't be taken for
+ * the gymnast. Comparing distances alone wasn't enough: going into a salto the gymnast's torso
+ * landed about as far from a coach as from where she had been. Someone new may be the gymnast.
+ */
+function claimedByOthers(others: Point[], poses: Pose[]): Map<Point, Pose> {
+  const claimed = new Map<Point, Pose>();
+  for (const other of others) {
+    const taken = new Set(claimed.values());
+    const free = poses.filter(
+      (pose) => !taken.has(pose) && distance(torsoCenter(pose), other) <= MAX_JUMP,
+    );
+    if (free.length > 0) claimed.set(other, nearest(free, other));
+  }
+  return claimed;
 }
 
 /**

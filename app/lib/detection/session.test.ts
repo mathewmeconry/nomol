@@ -334,4 +334,50 @@ describe('stopping', () => {
     const { events } = run(scene, LONG, { from: recording(0.45) });
     expect(events).toHaveLength(0);
   });
+
+  it('follows a fast salto rather than switching to a coach standing by', () => {
+    // From a Sprung recording: going into the salto the torso moved ~0.3 in one frame and ended
+    // up about as far from a coach standing next to the landing as from where it had been.
+    const gymnast = (t: number) =>
+      t < 1000
+        ? makePose({ x: 0.45, feetY: 0.9 })
+        : makePose({ x: 0.55, feetY: 0.9, lift: 0.3 + (t - 1000) / 10000 });
+    const scene: Scene = (t) => [makePose({ x: 0.62, feetY: 0.9 }), gymnast(t)];
+    const { state } = run(scene, 1500, { from: recording(0.45) });
+    expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.55, 2);
+  });
+
+  it('does not switch to someone walking past while the gymnast is not detected', () => {
+    // Walks from 0.85 to 0.25 over 2 s, passing the gymnast.
+    const walker = (t: number) => makePose({ x: 0.85 - (0.6 * t) / 2000, feetY: 0.9 });
+    const scene: Scene = (t) => [
+      walker(t),
+      ...(t > 800 && t < 1600 ? [] : [makePose({ x: 0.45, feetY: 0.9, lift: liftAt(t) })]),
+    ];
+    const { events, state } = run(scene, 2000, { from: recording(0.45) });
+    expect(events).toHaveLength(0);
+    expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.45, 2);
+  });
+
+  it('does not take someone who shows up where the gymnast left the picture', () => {
+    // From a hall recording: a girl close to the camera walked out at the side, and the one
+    // hidden behind her appeared next to that spot, much smaller.
+    const behind = (pose: Pose) => shrink(pose, 0.4);
+    const scene: Scene = (t) =>
+      t < 1000
+        ? [makePose({ x: 0.55 + (0.4 * t) / 1000, feetY: 0.9 })]
+        : [behind(makePose({ x: 0.9, feetY: 0.9 }))];
+    const { events } = run(scene, 3000, { from: recording(0.55) });
+    expect(events.map((e) => e.event)).toEqual([{ type: 'stop', reason: 'lost' }]);
+  });
 });
+
+/** The same pose, smaller around its hips: someone further away. */
+function shrink(pose: Pose, factor: number): Pose {
+  const hip = pose[LM.leftHip];
+  return pose.map((p) => ({
+    ...p,
+    x: hip.x + (p.x - hip.x) * factor,
+    y: hip.y + (p.y - hip.y) * factor,
+  }));
+}
