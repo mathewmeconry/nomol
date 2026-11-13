@@ -18,6 +18,7 @@ import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/
 import type { Point } from '~/lib/detection/pose';
 import { exportClip } from '~/lib/recording/export.client';
 import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
+import { cn } from '~/lib/utils';
 import { FULL_VIEW, zoomView, type View } from '~/lib/zoom';
 
 /** One button cycles through these, to save space on phones. */
@@ -247,9 +248,10 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
       </div>
 
       <div
-        className={`absolute inset-x-0 bottom-0 space-y-1.5 bg-linear-to-t from-black/90 via-black/60 to-transparent px-3 pt-8 pb-2 transition-opacity ${
-          controlsVisible ? '' : 'pointer-events-none opacity-0'
-        }`}
+        className={cn(
+          'absolute inset-x-0 bottom-0 space-y-1.5 bg-linear-to-t from-black/90 via-black/60 to-transparent px-3 pt-8 pb-2 transition-opacity',
+          !controlsVisible && 'pointer-events-none opacity-0',
+        )}
       >
         {clipStrip}
         {skeletonProgress && (
