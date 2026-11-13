@@ -32,7 +32,7 @@ import {
 import { startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording } from '~/lib/recording/recorder.client';
 import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
-import { cn } from '~/lib/utils';
+import { cn } from 'cn';
 import { DEFAULT_ZONE, loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */

@@ -18,7 +18,7 @@ import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/
 import type { Point } from '~/lib/detection/pose';
 import { exportClip } from '~/lib/recording/export.client';
 import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
-import { cn } from '~/lib/utils';
+import { cn } from 'cn';
 import { FULL_VIEW, zoomView, type View } from '~/lib/zoom';
 
 /** One button cycles through these, to save space on phones. */

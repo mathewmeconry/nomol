@@ -69,7 +69,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   as a static site and deployed to GitHub Pages under `/nomol/` (`BASE_PATH`); use
   `import.meta.env.BASE_URL` for links to files in `public/`.
 - Tailwind CSS v4, shadcn/ui (new-york, Radix, lucide icons) in `app/components/ui/` — add
-  components with `pnpm exec shadcn add <name>`; `cn` lives in `~/lib/utils`. Always dark
+  components with `pnpm exec shadcn add <name>`; join classes with `cn` from the `cn` package
+  (shadcn's replacement for clsx + tailwind-merge), never with template strings. Always dark
   (`<html class="dark">`); controls over the video use the `floating` style in `Tablet.tsx`.
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4

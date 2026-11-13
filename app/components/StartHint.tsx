@@ -1,5 +1,5 @@
 import type { RunUp } from '~/lib/detection/session';
-import { cn } from '~/lib/utils';
+import { cn } from 'cn';
 
 /** Tells the gymnast how to start a recording, above the clip strip if there is one. */
 export default function StartHint({

@@ -9,7 +9,7 @@ import {
 } from '~/components/ui/select';
 import { Toggle } from '~/components/ui/toggle';
 import type { RunUp } from '~/lib/detection/session';
-import { cn } from '~/lib/utils';
+import { cn } from 'cn';
 
 export type Status = 'idle' | 'sign' | 'armed' | 'recording';
 

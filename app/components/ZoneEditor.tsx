@@ -2,7 +2,7 @@ import { useState, type PointerEvent } from 'react';
 import { Button } from '~/components/ui/button';
 import { normalizeZone, type Zone } from '~/lib/detection/zone';
 import type { Point } from '~/lib/detection/pose';
-import { cn } from '~/lib/utils';
+import { cn } from 'cn';
 import { DEFAULT_ZONE } from '~/lib/zone-storage';
 
 /** Smaller than about one body width is almost certainly a slip of the finger. */
