@@ -100,6 +100,15 @@ export default function useClips(detector: PoseDetector | null) {
       .catch(() => setProgress({ stage: 'failed', percent: 0 }));
   }
 
+  function removeAll() {
+    for (const clip of clips) {
+      removedRef.current.add(clip.id);
+      URL.revokeObjectURL(clip.url);
+      void deleteClip(clip.id).catch(() => {});
+    }
+    setClips([]);
+  }
+
   /** The skeleton waits while the phone needs its power, e.g. while recording. */
   function pauseSkeleton(paused: boolean) {
     pausedRef.current = paused;
@@ -107,5 +116,5 @@ export default function useClips(detector: PoseDetector | null) {
     else refinerRef.current?.resume();
   }
 
-  return { clips, skeletonProgress, add, remove, pauseSkeleton };
+  return { clips, skeletonProgress, add, remove, removeAll, pauseSkeleton };
 }

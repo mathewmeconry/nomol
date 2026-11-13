@@ -15,7 +15,10 @@ function appVersion() {
 export default defineConfig({
   // Must match `basename` in react-router.config.ts.
   base: process.env.BASE_PATH ?? '/',
-  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [tailwindcss(), reactRouter()],
   resolve: {
     tsconfigPaths: true,

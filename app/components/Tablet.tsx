@@ -3,6 +3,7 @@ import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
 import LiveControls, { type Status } from '~/components/LiveControls';
 import LoadingScreen from '~/components/LoadingScreen';
+import Settings from '~/components/Settings';
 import StartHint from '~/components/StartHint';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
@@ -30,7 +31,7 @@ import {
 } from '~/lib/recording/capture.client';
 import { startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording } from '~/lib/recording/recorder.client';
-import { playStartSound } from '~/lib/sound.client';
+import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
 import { cn } from '~/lib/utils';
 import { DEFAULT_ZONE, loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
 
@@ -56,9 +57,10 @@ export default function Tablet() {
     skeletonProgress,
     add: addClip,
     remove: removeClip,
+    removeAll: removeAllClips,
     pauseSkeleton,
   } = useClips(detector);
-  const soundReady = useTapEffects();
+  useTapEffects();
   useWakeLock();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -83,6 +85,10 @@ export default function Tablet() {
   const [view, setView] = useState<'live' | 'replay'>('live');
   const [editingZone, setEditingZone] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [soundOn, setSoundOn] = useState(() =>
+    typeof window === 'undefined' ? true : loadSoundOn(),
+  );
   /** The small live picture over the replay can be moved off the part the coach looks at. */
   const livePictureRef = useRef<HTMLDivElement>(null);
   const livePicture = useDragSpot();
@@ -171,7 +177,7 @@ export default function Tablet() {
         );
         activeRef.current = active;
         if (preroll) addPreroll(active, seenRef.current, result.event.pose, time);
-        playStartSound();
+        if (soundOn) playStartSound();
         setArmedAt(null);
       } else if (prerollRef.current) {
         seenRef.current = rememberFrame(seenRef.current, frame, time, poses);
@@ -393,18 +399,6 @@ export default function Tablet() {
 
       <LiveControls
         status={status}
-        soundReady={soundReady}
-        cameras={cameras}
-        cameraId={
-          camera.status === 'ready'
-            ? camera.stream.getVideoTracks()[0]?.getSettings().deviceId
-            : undefined
-        }
-        onCamera={(deviceId) => {
-          saveCameraId(deviceId);
-          setCameraId(deviceId);
-        }}
-        wideAngle={wideAngle}
         runUp={runUp}
         onRunUp={(next) => {
           saveRunUp(next);
@@ -427,6 +421,35 @@ export default function Tablet() {
           sessionRef.current = initialSession;
           setStatus('idle');
           void finishRecording(lastFrameTimeRef.current);
+        }}
+        onSettings={() => setSettingsOpen(true)}
+      />
+
+      <Settings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        recording={recording}
+        cameras={cameras}
+        cameraId={
+          camera.status === 'ready'
+            ? camera.stream.getVideoTracks()[0]?.getSettings().deviceId
+            : undefined
+        }
+        onCamera={(deviceId) => {
+          saveCameraId(deviceId);
+          setCameraId(deviceId);
+        }}
+        wideAngle={wideAngle}
+        soundOn={soundOn}
+        onSound={(on) => {
+          saveSoundOn(on);
+          setSoundOn(on);
+        }}
+        clipCount={clips.length}
+        onDeleteAll={() => {
+          removeAllClips();
+          setCurrentId(null);
+          setView('live');
         }}
       />
 

@@ -1,5 +1,16 @@
 let context: AudioContext | null = null;
 
+const SOUND_KEY = 'nomol.sound';
+
+/** The start beep can be switched off per device, e.g. where several devices stand close. */
+export function loadSoundOn(): boolean {
+  return localStorage.getItem(SOUND_KEY) !== 'off';
+}
+
+export function saveSoundOn(on: boolean) {
+  localStorage.setItem(SOUND_KEY, on ? 'on' : 'off');
+}
+
 /**
  * Browsers only allow sound after the page has been touched once, so call this from a tap or
  * click handler. Resolves to whether sound can play now.

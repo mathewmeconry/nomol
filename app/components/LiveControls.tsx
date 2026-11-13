@@ -1,4 +1,4 @@
-import { Camera, Circle, Square, SquareDashed, Volume2, Zap } from 'lucide-react';
+import { Circle, Settings, Square, SquareDashed, X, Zap } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   Select,
@@ -8,7 +8,6 @@ import {
   SelectValue,
 } from '~/components/ui/select';
 import { Toggle } from '~/components/ui/toggle';
-import type useWideAngle from '~/hooks/use-wide-angle';
 import type { RunUp } from '~/lib/detection/session';
 import { cn } from '~/lib/utils';
 
@@ -40,11 +39,6 @@ const floating =
 
 type Props = {
   status: Status;
-  soundReady: boolean;
-  cameras: MediaDeviceInfo[];
-  cameraId: string | undefined;
-  onCamera: (deviceId: string) => void;
-  wideAngle: ReturnType<typeof useWideAngle>;
   runUp: RunUp | null;
   onRunUp: (runUp: RunUp | null) => void;
   editingZone: boolean;
@@ -54,6 +48,7 @@ type Props = {
   canArm: boolean;
   onArm: (armed: boolean) => void;
   onStop: () => void;
+  onSettings: () => void;
 };
 
 /**
@@ -62,11 +57,6 @@ type Props = {
  */
 export default function LiveControls({
   status,
-  soundReady,
-  cameras,
-  cameraId,
-  onCamera,
-  wideAngle,
   runUp,
   onRunUp,
   editingZone,
@@ -75,6 +65,7 @@ export default function LiveControls({
   canArm,
   onArm,
   onStop,
+  onSettings,
 }: Props) {
   const recording = status === 'recording';
   return (
@@ -84,56 +75,18 @@ export default function LiveControls({
         editingZone && 'hidden',
       )}
     >
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            floating,
-            'inline-flex h-8 items-center gap-2 px-3 text-sm',
-            STATUS_STYLE[status],
-          )}
-        >
-          <span aria-hidden className="size-2 rounded-full bg-current" />
-          {STATUS_TEXT[status]}
-        </span>
-        {!soundReady && (
-          <Button variant="ghost" size="sm" className={floating}>
-            <Volume2 />
-            Ton einschalten
-          </Button>
+      <span
+        className={cn(
+          floating,
+          'inline-flex h-8 items-center gap-2 px-3 text-sm',
+          STATUS_STYLE[status],
         )}
-      </div>
+      >
+        <span aria-hidden className="size-2 rounded-full bg-current" />
+        {STATUS_TEXT[status]}
+      </span>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {cameras.length > 1 && (
-          <Select value={cameraId ?? ''} disabled={recording} onValueChange={onCamera}>
-            <SelectTrigger
-              size="sm"
-              aria-label="Kamera"
-              className={cn(floating, 'max-w-40 border-0 sm:max-w-52')}
-            >
-              <Camera />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {cameras.map((device, index) => (
-                <SelectItem key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Kamera ${index + 1}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {wideAngle.zoom !== undefined && (
-          <Toggle
-            size="sm"
-            pressed={wideAngle.wide}
-            disabled={recording}
-            onPressedChange={wideAngle.toggle}
-            className={floating}
-          >
-            {`${wideAngle.zoom.toLocaleString('de-CH')}×`}
-          </Toggle>
-        )}
         <Select
           value={runUp ?? 'sign'}
           disabled={recording}
@@ -165,27 +118,35 @@ export default function LiveControls({
           <SquareDashed />
           Startzone
         </Toggle>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Einstellungen"
+          onClick={onSettings}
+          className={floating}
+        >
+          <Settings />
+        </Button>
         {recording ? (
-          <Button size="sm" variant="destructive" onClick={onStop} className="rounded-full">
+          <Button
+            size="icon-sm"
+            variant="destructive"
+            aria-label="Aufnahme stoppen"
+            onClick={onStop}
+            className="rounded-full"
+          >
             <Square className="fill-current" />
-            Aufnahme stoppen
           </Button>
         ) : (
           <Button
-            size="sm"
+            size="icon-sm"
             variant={armed ? 'ghost' : 'destructive'}
+            aria-label={armed ? 'Abbrechen' : 'Aufnahme starten'}
             disabled={!canArm || editingZone}
             onClick={() => onArm(!armed)}
             className={cn('rounded-full', armed && floating)}
           >
-            {armed ? (
-              'Abbrechen'
-            ) : (
-              <>
-                <Circle className="fill-current" />
-                Aufnahme starten
-              </>
-            )}
+            {armed ? <X /> : <Circle className="fill-current" />}
           </Button>
         )}
       </div>

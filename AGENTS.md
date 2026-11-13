@@ -34,20 +34,24 @@ Requirements, as agreed with the owner:
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
   floor line used for the stop rule and trimming; it must be where the feet are.
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
-  Chrome on Android usually lists only front and back; there a zoom button (e.g. "0,5×") reaches
+  Chrome on Android usually lists only front and back; there a "Weitwinkel (0,5×)" switch reaches
   the ultra-wide lens if the phone allows zooming below 1×.
+- **Settings** (gear in the bar, kept off the live picture): camera and wide angle, the start
+  beep on/off, deleting all recordings (two taps), and the version (commit) and build time, to
+  tell whether an update loaded.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
   next gymnast; the small live picture over it can be dragged anywhere, a tap on it goes live. Speeds ¼× / ½× / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
-  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts. The replay
+  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
   upside down).
 - **Clips:** recordings as a strip with one thumbnail each. All kept on the device
   (IndexedDB, persistent storage requested) until deleted with two taps; no automatic deletion,
-  they're test footage for later. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
+  they're test footage for later; or all at once in the settings. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
   Android won't share `.json` files).
 - **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer;
-  controls float over the video and fade during playback. Every tap enters fullscreen (not on
+  controls float over the video and fade during playback; the bar keeps only the status, start
+  mode, start zone, settings and an icon-only record button. Every tap enters fullscreen (not on
   iPhone); installed to the home screen it starts fullscreen.
 - **Offline:** after one visit with internet the app and model work without a connection.
 - **No server for now.** Everything runs and stays on the device. A server is a later discussion.
@@ -107,8 +111,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   `pose.worker.ts`.
 - `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
   and finishes recordings, switches between live picture and replay.
-- `app/components/LiveControls.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the bar over the live
-  picture, the start hint, the loading/error screen.
+- `app/components/LiveControls.tsx`, `Settings.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the
+  bar over the live picture, the settings dialog, the start hint, the loading/error screen.
 - `app/components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
 - `app/hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`

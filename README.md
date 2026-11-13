@@ -1,7 +1,7 @@
 # Nomol
 
 Self-service video replay for Swiss Geräteturnen training. A tablet at the apparatus records a
-gymnast when they give the start sign in the start zone (or tap "Aufnahme starten"), follows them
+gymnast when they give the start sign in the start zone (or tap the record button), follows them
 through the routine, and shows the clip right after they land. Runs as an installable web app (PWA).
 
 **Live:** https://mathewmeconry.github.io/nomol/ (deployed from `main`)
