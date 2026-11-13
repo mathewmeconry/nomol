@@ -42,8 +42,9 @@ Requirements, as agreed with the owner:
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
   upside down).
-- **Clips:** recent recordings as a strip with one thumbnail each. Last 8 kept on the device
-  (IndexedDB), deletable with two taps, exportable as video + `.nomol.txt` (JSON; Chrome on
+- **Clips:** recordings as a strip with one thumbnail each. All kept on the device
+  (IndexedDB, persistent storage requested) until deleted with two taps; no automatic deletion,
+  they're test footage for later. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
   Android won't share `.json` files).
 - **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer;
   controls float over the video and fade during playback. Every tap enters fullscreen (not on
@@ -84,7 +85,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   Pixel 8.
 - Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
   every ~3 s, and scrubbing the replay looked frozen while each seek decoded seconds of video.
-- Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
+- Recording: MediaRecorder on the camera stream; clips are kept in IndexedDB
   (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
 - Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
 - vitest + Testing Library (jsdom)

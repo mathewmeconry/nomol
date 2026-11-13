@@ -29,7 +29,7 @@ Live detection (start sign, following, stopping) uses MediaPipe Pose. The replay
 computed after each recording with the same model, each frame turned so the gymnast appears
 upright, which handles handstands far better.
 
-The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
+Clips are kept in the browser (IndexedDB) until deleted, so they survive reloads. Nothing is
 uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.txt` (JSON body
 points per frame, start zone, aspect ratio).
 

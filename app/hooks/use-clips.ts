@@ -9,12 +9,9 @@ import {
   type SkeletonSample,
 } from '~/lib/skeleton/refiner.client';
 
-/** Older clips are dropped to keep the tablet's memory in check. */
-const MAX_CLIPS = 8;
-
 /**
- * The recent clips, newest first: kept in IndexedDB, and each one's replay skeleton computed
- * in the background after it was recorded.
+ * All clips, newest first: kept in IndexedDB until deleted by hand (they're test footage too),
+ * and each one's replay skeleton computed in the background after it was recorded.
  *
  * @param detector computes the skeleton; clips are only recorded once it's loaded
  */
@@ -22,17 +19,19 @@ export default function useClips(detector: PoseDetector | null) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [skeletonProgress, setSkeletonProgress] = useState<Record<string, SkeletonProgress>>({});
   const refinerRef = useRef<SkeletonRefiner | null>(null);
-  /** Clips deleted or dropped, so their skeleton computation stops. */
+  /** Clips deleted meanwhile, so their skeleton computation stops. */
   const removedRef = useRef(new Set<string>());
   const pausedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    // Otherwise the browser may clear the clips when the device runs low on space.
+    void navigator.storage?.persist?.().catch(() => {});
     loadClips()
       .then((stored) => {
         if (cancelled) return stored.forEach((clip) => URL.revokeObjectURL(clip.url));
         // Clips recorded while loading come first; the list stays newest-first.
-        setClips((recorded) => [...recorded, ...stored].slice(0, MAX_CLIPS));
+        setClips((recorded) => [...recorded, ...stored]);
       })
       .catch(() => {});
     return () => {
@@ -50,14 +49,7 @@ export default function useClips(detector: PoseDetector | null) {
     samples: SkeletonSample[],
     first: { startMs: number; endMs: number },
   ) {
-    setClips((previous) => {
-      for (const old of previous.slice(MAX_CLIPS - 1)) {
-        removedRef.current.add(old.id);
-        URL.revokeObjectURL(old.url);
-        void deleteClip(old.id).catch(() => {});
-      }
-      return [clip, ...previous].slice(0, MAX_CLIPS);
-    });
+    setClips((previous) => [clip, ...previous]);
     // A full or blocked storage only means the clip won't survive a reload.
     void saveClip(clip, video).catch(() => {});
     computeSkeleton(clip, samples, first);
