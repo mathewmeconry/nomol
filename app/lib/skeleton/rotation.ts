@@ -38,6 +38,14 @@ const MAIN: number[] = [
  * skeleton anyway followed a spectator for a whole recording.
  */
 const MAX_DISTANCE = 0.2;
+/**
+ * With a live pose in the frame, the skeleton's torso centre (which stays put when MediaPipe
+ * flips a skeleton) must be this share of the gymnast's size from the live one. Running past
+ * two girls squatting by the springboard, the view's only skeleton was one of them, 0.19–0.39
+ * away; on the gymnast it was mostly ~0.01. The live torso length alone was no measure: it
+ * collapses in some frames.
+ */
+const MAX_LIVE_DISTANCE = 0.15;
 /** The view is this many times the gymnast's size, but at least `MIN_VIEW` image heights. */
 const VIEW_SCALE = 1.8;
 const MIN_VIEW = 0.3;
@@ -81,9 +89,9 @@ function centerPx(pose: Pose, width: number, height: number): Point {
   return { x: center.x * width, y: center.y * height };
 }
 
-function nearest(poses: Pose[], center: Point, width: number, height: number) {
+function nearest(poses: Pose[], center: Point, width: number, height: number, reach: number) {
   let best: Pose | null = null;
-  let bestDistance = MAX_DISTANCE * height;
+  let bestDistance = reach;
   for (const pose of poses) {
     const c = centerPx(pose, width, height);
     const d = Math.hypot(c.x - center.x, c.y - center.y);
@@ -112,17 +120,24 @@ export function createTracker(width: number, height: number) {
     }
     if (!center) return null;
     const recent = sizes.slice(-SIZE_FRAMES).sort((a, b) => a - b);
-    const size = Math.max(
-      VIEW_SCALE * (recent[Math.floor(recent.length / 2)] ?? 0),
-      MIN_VIEW * height,
-    );
+    const gymnastSize = recent[Math.floor(recent.length / 2)] ?? 0;
+    const size = Math.max(VIEW_SCALE * gymnastSize, MIN_VIEW * height);
+    const reach = tracked
+      ? Math.min(MAX_DISTANCE * height, MAX_LIVE_DISTANCE * gymnastSize)
+      : MAX_DISTANCE * height;
     const predicted = angle + turning;
 
     let best: { pose: Pose; score: number; upright: boolean } | null = null;
     // The predicted angle first; the others when MediaPipe saw no upright gymnast there.
     for (const turn of [0, Math.PI, Math.PI / 2, -Math.PI / 2]) {
       const viewAngle = predicted + turn;
-      const pose = nearest(detect({ center, size, angle: viewAngle }), center, width, height);
+      const pose = nearest(
+        detect({ center, size, angle: viewAngle }),
+        center,
+        width,
+        height,
+        reach,
+      );
       if (!pose) continue;
       const upright =
         Math.abs(wrap(bodyAngle(pose, width, height) - viewAngle)) < MAX_TURN &&
@@ -136,7 +151,7 @@ export function createTracker(width: number, height: number) {
       const whole = { x: width / 2, y: height / 2 };
       for (const viewAngle of [0, Math.PI]) {
         const view = { center: whole, size: Math.max(width, height), angle: viewAngle };
-        const pose = nearest(detect(view), center, width, height);
+        const pose = nearest(detect(view), center, width, height, reach);
         if (pose && (!best || visibility(pose) > best.score)) {
           best = { pose, score: visibility(pose), upright: false };
         }

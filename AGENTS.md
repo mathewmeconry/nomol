@@ -160,6 +160,10 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   (the gymnast is small at 640 px and often missed; the crop enlarges them); upside down 34 of
   40, live 30. Taking the nearest skeleton without a distance limit followed a spectator for a
   whole recording; hence views centred on the live torso centre and a 0.2 image-height limit.
+  On a Sprung clip the blurred gymnast running past two girls squatting by the springboard was
+  missed and one of them drawn instead (0.13 image heights away); with a live pose the limit is
+  now 0.15 of the gymnast's size. On that clip and two hall recordings (411 frames) this moved
+  7 frames, 5 of them from someone else or a partial skeleton onto the gymnast, and dropped 3.
   ~1.5 MediaPipe runs per frame, ~30 ms each on a laptop GPU.
 - Automatic start, from three Sprung slow-motion videos (Pixel 8, 240 fps, played back at real
   speed): gymnasts crossed the picture at 2–9 torso lengths per second and were recognised

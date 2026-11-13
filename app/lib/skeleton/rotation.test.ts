@@ -65,6 +65,13 @@ describe('createTracker', () => {
     expect(next(gymnast, () => [bystander])).toBeNull();
   });
 
+  it('does not take someone right next to the gymnast when MediaPipe misses the gymnast', () => {
+    // As when running past someone squatting by the springboard: ~0.1 image heights away.
+    const next = createTracker(W, H);
+    const squatting = makePose({ x: 0.55, feetY: 0.8 });
+    expect(next(gymnast, () => [squatting])).toBeNull();
+  });
+
   it('carries on where the gymnast was when the live tracking lost them', () => {
     const next = createTracker(W, H);
     next(gymnast, fakeDetector(gymnast));
