@@ -40,7 +40,7 @@ Requirements, as agreed with the owner:
   beep on/off, deleting all recordings (two taps), and the version (commit) and build time, to
   tell whether an update loaded.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
-  next gymnast; the small live picture over it can be dragged anywhere, a tap on it goes live. Speeds ¼× / ½× / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
+  next gymnast; the small live picture over it can be dragged anywhere, a tap on it goes live. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong

@@ -76,7 +76,8 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Follows the video's own play/pause events, so the button never disagrees with it.
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1);
+  // Half speed by default: elements are fast, and at 60 fps recording it still plays smoothly.
+  const [speed, setSpeed] = useState(0.5);
   const [skeleton, setSkeleton] = useState(true);
   const [timeMs, setTimeMs] = useState(0);
   const [exporting, setExporting] = useState(false);
