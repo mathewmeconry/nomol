@@ -46,16 +46,26 @@ const MAX_JUMP = 0.15;
  */
 const SEARCH_GROWTH_PER_S = 0.6;
 /**
- * Automatic start: within this window, the person must have moved this many torso lengths
- * towards the apparatus. On Sprung videos gymnasts came in at 2–9 torso lengths per second;
- * someone standing only jitters by fractions of that, back and forth.
+ * Automatic start: the person was seen this many times within the window, each sighting at
+ * least `RUN_STEP_MS` after the previous one and further towards the apparatus at a runner's
+ * speed (torso lengths per second). On Sprung videos gymnasts came in at 2–9 torso lengths per
+ * second. The window holds four sightings even on a phone managing 3–4 detections per second,
+ * where a gymnast was in the picture for only ~0.35 s before the take-off (the flight counts
+ * too). Three such steps cover at least 0.6 torso lengths, more than someone standing jitters;
+ * a filming phone held by hand drifted at ~1.7. Two people side by side, detected in turn,
+ * made one step and then stood.
  */
-const RUN_WINDOW_MS = 400;
-const RUN_MIN_SPAN_MS = 100;
-const RUN_MIN_TORSOS = 0.5;
+const RUN_WINDOW_MS = 1000;
+const RUN_STEP_MS = 100;
 const RUN_MIN_SIGHTINGS = 4;
-/** Share of frame-to-frame steps that must go towards the apparatus. */
-const RUN_FORWARD_SHARE = 0.75;
+const RUN_MIN_SPEED = 2;
+/** Faster steps were hops to someone else in a busy hall. */
+const RUN_MAX_SPEED = 12;
+/**
+ * Torso lengths of consecutive sightings differ by at most this factor; otherwise the trail
+ * hopped between people, e.g. from the runner to someone squatting by the springboard.
+ */
+const RUN_MAX_SIZE_CHANGE = 1.5;
 
 /** Automatic start: the side of the picture the run-up comes from. */
 export type RunUp = 'left' | 'right';
@@ -187,31 +197,34 @@ function startRecording(pose: Pose, poses: Pose[], time: number, sign: SignState
 }
 
 /**
- * Whether the person came in from the run-up side: followed back frame by frame through
- * `recent`, they moved far enough towards the apparatus, mostly in that direction. Following
- * them step by step (rather than comparing with whoever was nearest a moment ago) keeps people
- * standing nearby and a detection that jumps for a frame from counting as movement.
+ * Whether the person came in from the run-up side (see `RUN_WINDOW_MS`): followed back through
+ * `recent`, only to where a runner could have been before. The nearest skeleton was often
+ * someone else: running past people sitting by the springboard, the gymnast's previous
+ * sighting was further away than they were.
  */
 function isRunningIn(pose: Pose, recent: Seen[], time: number, runUp: RunUp): boolean {
   const direction = runUp === 'left' ? 1 : -1;
-  const trail = [{ time, center: torsoCenter(pose), torso: torsoLength(pose) }];
+  let last = { time, center: torsoCenter(pose), torso: torsoLength(pose) };
+  let sightings = 1;
   for (const seen of [...recent].reverse()) {
-    const last = trail[trail.length - 1];
-    const reach = MAX_JUMP + (SEARCH_GROWTH_PER_S * (last.time - seen.time)) / 1000;
+    const seconds = (last.time - seen.time) / 1000;
+    if (seconds * 1000 < RUN_STEP_MS) continue;
     const before = seen.people
-      .filter((person) => distance(person.center, last.center) <= reach)
+      .filter((person) => {
+        const torso = Math.max(person.torso, last.torso);
+        const forward = (last.center.x - person.center.x) * direction;
+        return (
+          torso <= RUN_MAX_SIZE_CHANGE * Math.min(person.torso, last.torso) &&
+          forward >= RUN_MIN_SPEED * torso * seconds &&
+          distance(person.center, last.center) <= RUN_MAX_SPEED * torso * seconds
+        );
+      })
       .sort((a, b) => distance(a.center, last.center) - distance(b.center, last.center))[0];
-    if (before) trail.push({ time: seen.time, ...before });
+    if (!before) continue;
+    last = { time: seen.time, ...before };
+    sightings++;
   }
-  const first = trail[trail.length - 1];
-  if (trail.length < RUN_MIN_SIGHTINGS || time - first.time < RUN_MIN_SPAN_MS) return false;
-  const steps = trail.slice(1).map((older, i) => (trail[i].center.x - older.center.x) * direction);
-  const forward = steps.filter((step) => step > 0).length;
-  const torso = Math.max(...trail.map((seen) => seen.torso));
-  return (
-    forward >= RUN_FORWARD_SHARE * steps.length &&
-    (trail[0].center.x - first.center.x) * direction >= RUN_MIN_TORSOS * torso
-  );
+  return sightings >= RUN_MIN_SIGHTINGS;
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {

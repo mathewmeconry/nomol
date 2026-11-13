@@ -30,12 +30,14 @@ function run(
     armed?: boolean;
     runUp?: RunUp;
     aspectRatio?: number;
+    /** Detections per second. */
+    fps?: number;
   } = {},
 ) {
   let state = options.from ?? initialSession;
   const events: { time: number; event: SessionEvent }[] = [];
   const start = options.start ?? 0;
-  for (let time = start; time <= start + durationMs; time += 1000 / FPS) {
+  for (let time = start; time <= start + durationMs; time += 1000 / (options.fps ?? FPS)) {
     const result = step(state, {
       time,
       poses: scene(time),
@@ -153,6 +155,29 @@ describe('starting automatically', () => {
   it('ignores someone standing in the zone, despite jitter', () => {
     const jittery: Scene = (t) => [makePose({ x: 0.45 + 0.02 * Math.sin(t / 50), feetY: 0.9 })];
     expect(run(jittery, LONG, { runUp: 'left' }).events).toEqual([]);
+  });
+
+  it('starts on a phone managing only a few detections per second', () => {
+    // Runs past someone standing by the springboard, who is nearer than the runner's previous
+    // sighting.
+    const scene: Scene = (t) => [
+      makePose({ x: 0.5, feetY: 0.9 }),
+      ...moving(0, 0.6)(t).filter((pose) => pose[LM.leftHip].x < 1),
+    ];
+    for (const fps of [4, 6]) {
+      const { events } = run(scene, 2000, { runUp: 'left', fps });
+      expect(events[0]?.event).toMatchObject({ type: 'start', reason: 'runUp' });
+    }
+  });
+
+  it('ignores two people side by side, detected in turn', () => {
+    // As by a springboard: mostly the left one, jittering slightly, now and then the other.
+    const xs = [0.4, 0.401, 0.4, 0.401, 0.55];
+    for (const fps of [6, 15, 30]) {
+      let frame = 0;
+      const inTurn: Scene = () => [makePose({ x: xs[frame++ % xs.length], feetY: 0.9 })];
+      expect(run(inTurn, LONG, { runUp: 'left', fps }).events).toEqual([]);
+    }
   });
 
   it('only starts by itself when switched on', () => {

@@ -163,15 +163,19 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   ~1.5 MediaPipe runs per frame, ~30 ms each on a laptop GPU.
 - Automatic start, from three Sprung slow-motion videos (Pixel 8, 240 fps, played back at real
   speed): gymnasts crossed the picture at 2–9 torso lengths per second and were recognised
-  0.1–0.4 s after appearing (also at 15 and 10 detections per second). The person is followed
-  back through the last 0.4 s: at least 4 sightings, ¾ of the steps towards the apparatus,
-  ≥ 0.5 torso lengths in total. Mirrored (coming from the wrong side) none started, except one
-  at 10 detections per second where the gymnast appeared next to someone standing. Browsers
-  can't record slow motion (Android's high-speed capture is for native apps only).
-  A real-speed run in the hall (camera on a stacked mat, zone nearly the whole picture) started
-  1.2–1.4 s in at 15–30 detections per second, ~2.5 s in (after the landing) at 5–6, and never
-  at 4 or fewer. Following people back further between sightings or needing only 3 sightings
-  didn't help (the latter started on two people sitting side by side).
+  0.1–0.4 s after appearing (also at 15 and 10 detections per second). Browsers can't record
+  slow motion (Android's high-speed capture is for native apps only).
+  The first rule (last 0.4 s, 4 sightings, ¾ of frame-to-frame steps forward, nearest skeleton
+  as the earlier sighting) never started at 4 or fewer detections per second, which phones
+  filming a jump managed, and started on two girls squatting by the springboard (detected in
+  turn, with jitter counting as forward steps); running past them, the gymnast's trail hopped
+  onto them. Now (Sprung clip filmed by hand, gymnast visible ~0.35 s before take-off): the
+  person is followed back through 1 s, only along steps ≥ 100 ms apart, towards the apparatus
+  at 2–12 torso lengths per second and with torso lengths within 1.5×; 4 sightings start. Run
+  at 3–30 detections per second (heavy and lite, every frame offset) it started in nearly every
+  case, 1.4 s in at 30 and ~2.3 s (in flight) at 3; mirrored it didn't, except once at 30 per
+  second (hand-held drift plus a hop). On three hall recordings it started far less often on
+  people walking or running around than the first rule.
 - Phone load, Pixel 8 (measured over adb, `chrome://inspect`): MediaPipe heavy took 25 ms per
   frame at first; after ~45 minutes of camera and models it ran hot (thermal status critical)
   and took 100–300 ms. While the RTMPose replay skeleton was computing (~1.3 s per frame there),
