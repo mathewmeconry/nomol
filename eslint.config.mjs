@@ -25,16 +25,16 @@ export default [
   includeIgnoreFile(gitignorePath, 'Imported .gitignore patterns'),
   {
     ignores: [
-      'tsconfig.json',
-      'react-router.config.ts',
-      'build/',
-      '.vite/',
+      '**/tsconfig.json',
+      'apps/web/react-router.config.ts',
+      'apps/web/build/',
+      '**/.vite/',
       '.vscode/',
       '.agents/',
       '.claude/',
       '**/*.d.ts',
-      'public/',
-      'coverage/',
+      'apps/web/public/',
+      '**/coverage/',
     ],
   },
   { files: ['**/*.{js,mjs,cjs,ts,jsx,tsx}'] },
@@ -67,7 +67,7 @@ export default [
   },
   {
     // Tests rely on partial mocks (`as any`); source files stay strict.
-    files: ['**/*.test.{ts,tsx}', 'app/tests/**'],
+    files: ['**/*.test.{ts,tsx}', 'packages/core/src/tests/**'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },

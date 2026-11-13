@@ -1,5 +1,5 @@
 .DS_Store
-/node_modules/
+node_modules/
 coverage/
 
 # Recordings and exported test data contain people; never commit them.
@@ -16,8 +16,8 @@ coverage/
 !.env.example
 
 # React Router
-/.react-router/
-/build/
+.react-router/
+/apps/*/build/
 
 # AI tools (skills are restored from skills-lock.json)
 .claude/worktrees/

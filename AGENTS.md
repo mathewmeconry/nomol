@@ -69,11 +69,17 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
 ## Stack
 
+- pnpm monorepo: `apps/web` (`@nomol/web`) is the web app; `packages/core` (`@nomol/core`) holds
+  the pure logic (detection, clips, export format, skeleton rotation, zoom), shared with the
+  coming React Native app in `apps/native`. Shared pure logic belongs in `packages/core` so web
+  and native stay in sync; it is imported as TypeScript source (`@nomol/core/detection/session`,
+  no build step) and must not use browser APIs. Run the scripts from the root: they cover the
+  whole workspace (`pnpm dev`, `pnpm build` and `pnpm preview` run the web app).
 - React Router 8 (framework mode, SPA: `ssr: false`), React 19, Vite, TypeScript strict. Built
   as a static site and deployed to GitHub Pages under `/nomol/` (`BASE_PATH`); use
-  `import.meta.env.BASE_URL` for links to files in `public/`.
-- Tailwind CSS v4, shadcn/ui (new-york, Radix, lucide icons) in `app/components/ui/` — add
-  components with `pnpm exec shadcn add <name>`; join classes with `cn` from the `cn` package
+  `import.meta.env.BASE_URL` for links to files in `apps/web/public/`.
+- Tailwind CSS v4, shadcn/ui (new-york, Radix, lucide icons) in `apps/web/app/components/ui/` —
+  add components with `pnpm exec shadcn add <name>` in `apps/web`; join classes with `cn` from the `cn` package
   (shadcn's replacement for clsx + tailwind-merge), never with template strings. Always dark
   (`<html class="dark">`); controls over the video use the `floating` style in `Tablet.tsx`.
 - zod for validation
@@ -93,7 +99,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
   pixels tall. The crop is a `visibleRect` view of the `VideoFrame` (no copy; gives the same
   poses as a canvas crop), mapped back to whole-frame coordinates in the worker.
-- Replay skeleton (`app/lib/skeleton/`): MediaPipe heavy again, as a second landmarker in IMAGE
+- Replay skeleton (`apps/web/app/lib/skeleton/`): MediaPipe heavy again, as a second landmarker in IMAGE
   mode on the already loaded model, in a worker (`skeleton.worker.ts`; on the page it blocked
   the replay up to ~0.5 s per frame, sometimes 1.4 s, on a Pixel 8). While recording, the
   frame (long side 640) and the live tracked pose are saved 10× per second as JPEG. Afterwards
@@ -106,34 +112,43 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
   every ~3 s, and scrubbing the replay looked frozen while each seek decoded seconds of video.
 - Recording: MediaRecorder on the camera stream; clips are kept in IndexedDB
-  (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.ts`).
-- Offline: `public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
-- vitest + Testing Library (jsdom)
+  (`clip-store.client.ts`) and can be exported as video + `.nomol.txt` (`export.client.ts`, format in core's `export.ts`).
+- Offline: `apps/web/public/sw.js` caches network-first (app, MediaPipe WASM and model), production only.
+- vitest + Testing Library (jsdom in the web app, node in core)
 - pnpm only, Node >= 24
 - Database (when needed): Prisma with Postgres. Not added yet; don't add it without a feature
   that needs persistence.
 
 ## Code map
 
-- `app/lib/detection/`: pure, tested logic. `session.ts` decides when recordings start and stop
-  (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and floor line.
-  Also MediaPipe itself: `pose-detector.client.ts` (models, lite fallback) talking to
-  `pose.worker.ts`.
-- `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
+`packages/core/src/` (pure, tested, shared):
+
+- `detection/`: `pose.ts` landmarks and body measures, `session.ts` decides when recordings
+  start and stop (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and
+  floor line.
+- `recording/`: `clip.ts` clips, trimming (`routineRange`) and skeleton interpolation
+  (`poseAt`), `export.ts` the export format.
+- `skeleton/rotation.ts`: the turned views and the tracking through a clip for the replay
+  skeleton.
+- `zoom.ts`: replay pinch zoom.
+- `tests/poses.ts`: builds synthetic poses for tests.
+
+`apps/web/app/` (paths below are relative to it):
+
+- `lib/detection/`: MediaPipe itself: `pose-detector.client.ts` (models, lite fallback) talking
+  to `pose.worker.ts`.
+- `components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
   and finishes recordings, switches between live picture and replay.
-- `app/components/LiveControls.tsx`, `Settings.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the
+- `components/LiveControls.tsx`, `Settings.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the
   bar over the live picture, the settings dialog, the start hint, the loading/error screen.
-- `app/components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
+- `components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
-- `app/hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`
+- `hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`
   (MediaPipe loading), `use-tap-effects` (fullscreen and sound need a tap), camera hooks.
-- `app/lib/recording/`: clips, recorder, pre-roll, storage, export, skeleton interpolation
-  (`poseAt`). `capture.client.ts` gathers poses, skeleton frames and stills while recording and
-  turns them into a clip.
-- `app/lib/skeleton/`: replay skeleton. `rotation.ts` the turned views and the tracking through
-  a clip (pure, tested), `skeleton.worker.ts` MediaPipe on the turned views, `refiner.client.ts`
-  frame capture and the job queue.
-- `app/tests/poses.ts`: builds synthetic poses for tests.
+- `lib/recording/`: recorder, pre-roll, storage, export. `capture.client.ts` gathers poses,
+  skeleton frames and stills while recording and turns them into a clip.
+- `lib/skeleton/`: replay skeleton. `skeleton.worker.ts` MediaPipe on the turned views,
+  `refiner.client.ts` frame capture and the job queue.
 
 ## Detection notes (learned from real footage)
 
@@ -256,8 +271,10 @@ Keep such files and scripts outside the repo. Check layouts at phone sizes (e.g.
 
 ## Conventions
 
-- Routes are declared in `app/routes.ts` (no file-system routing).
-- Path alias `~/*` maps to `app/*`. Use `import type` for type-only imports.
+- Routes are declared in `apps/web/app/routes.ts` (no file-system routing).
+- In the web app, path alias `~/*` maps to `apps/web/app/*`; core is imported as
+  `@nomol/core/...`, and imports inside core are relative. Use `import type` for type-only
+  imports.
 - Prefer `function` declarations over arrow-function constants. Default-export page components.
 - Browser-only code (camera, MediaPipe, MediaRecorder, audio, storage) uses the `*.client.ts`
   suffix.

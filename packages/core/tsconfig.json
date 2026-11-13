@@ -1,0 +1,14 @@
+{
+  "include": ["src/**/*", "vitest.config.ts"],
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["vitest/globals"],
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true
+  }
+}

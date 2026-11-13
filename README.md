@@ -22,7 +22,7 @@ The app runs on `http://localhost:5173` (`pnpm dev --port 5180` if that port is 
 
 Camera access needs a secure context: `localhost` works, a tablet on the network needs HTTPS.
 Pose detection loads its WASM and model from the internet. After one visit with internet, a
-service worker (`public/sw.js`, production builds only) keeps the app and the model available
+service worker (`apps/web/public/sw.js`, production builds only) keeps the app and the model available
 offline.
 
 Live detection (start sign, following, stopping) uses MediaPipe Pose. The replay skeleton is
@@ -49,17 +49,28 @@ points per frame, start zone, aspect ratio).
    goes), which finds people far from the camera. Draw the zone over everything a gymnast
    should be found in before the start.
 
+## Layout
+
+A pnpm workspace:
+
+- `apps/web`: the web app (`@nomol/web`)
+- `packages/core`: pure logic shared with the coming React Native app (`@nomol/core`): start and
+  stop detection, start zone, clips, export format, replay skeleton rotation
+
 ## Scripts
 
+Run from the root; they cover the whole workspace.
+
 - `pnpm dev`: dev server with HMR
-- `pnpm build` / `pnpm preview`: static production build in `build/client`, and a server for it
+- `pnpm build` / `pnpm preview`: static production build in `apps/web/build/client`, and a
+  server for it
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test:ci`: the checks CI runs
 - `pnpm knip`: find unused files, exports and dependencies
 
 ## Deployment
 
 The app is a static single-page app: camera, pose detection and recording all run in the
-browser. Every push to `main` runs the checks and deploys `build/client` to GitHub Pages
+browser. Every push to `main` runs the checks and deploys `apps/web/build/client` to GitHub Pages
 (`.github/workflows/deploy.yml`). Pages serves it under `/nomol/`, set at build time with
 `BASE_PATH=/nomol/`.
 
