@@ -66,6 +66,8 @@ const RUN_MAX_SPEED = 12;
  * hopped between people, e.g. from the runner to someone squatting by the springboard.
  */
 const RUN_MAX_SIZE_CHANGE = 1.5;
+/** Tracing a runner back: between two sure sightings, a skeleton this close to the path. */
+const RUN_PATH_TORSOS = 0.5;
 
 /** Automatic start: the side of the picture the run-up comes from. */
 export type RunUp = 'left' | 'right';
@@ -95,7 +97,8 @@ type SignState = {
 };
 
 /** Where people were in a recent frame, to see who is running in. */
-type Seen = { time: number; people: { center: Point; torso: number }[] };
+type Person = { center: Point; torso: number };
+type Seen = { time: number; people: Person[] };
 
 type Idle = SignState & { kind: 'idle'; recent: Seen[] };
 
@@ -197,34 +200,44 @@ function startRecording(pose: Pose, poses: Pose[], time: number, sign: SignState
 }
 
 /**
- * Whether the person came in from the run-up side (see `RUN_WINDOW_MS`): followed back through
- * `recent`, only to where a runner could have been before. The nearest skeleton was often
- * someone else: running past people sitting by the springboard, the gymnast's previous
- * sighting was further away than they were.
+ * A runner's sightings, newest first, starting with `start` (see `RUN_WINDOW_MS`): followed
+ * back through `seen` (oldest first), only to where a runner could have been before. The
+ * nearest skeleton was often someone else: running past people sitting by the springboard, the
+ * gymnast's previous sighting was further away than they were.
  */
-function isRunningIn(pose: Pose, recent: Seen[], time: number, runUp: RunUp): boolean {
+function runTrail<P extends Person>(
+  start: { time: number; person: P },
+  seen: { time: number; people: P[] }[],
+  runUp: RunUp,
+): { time: number; person: P }[] {
   const direction = runUp === 'left' ? 1 : -1;
-  let last = { time, center: torsoCenter(pose), torso: torsoLength(pose) };
-  let sightings = 1;
-  for (const seen of [...recent].reverse()) {
-    const seconds = (last.time - seen.time) / 1000;
+  const trail = [start];
+  for (const frame of [...seen].reverse()) {
+    const last = trail[trail.length - 1];
+    const seconds = (last.time - frame.time) / 1000;
     if (seconds * 1000 < RUN_STEP_MS) continue;
-    const before = seen.people
+    if (seconds * 1000 > LOST_MS) break;
+    const before = frame.people
       .filter((person) => {
-        const torso = Math.max(person.torso, last.torso);
-        const forward = (last.center.x - person.center.x) * direction;
+        const torso = Math.max(person.torso, last.person.torso);
+        const forward = (last.person.center.x - person.center.x) * direction;
         return (
-          torso <= RUN_MAX_SIZE_CHANGE * Math.min(person.torso, last.torso) &&
+          torso <= RUN_MAX_SIZE_CHANGE * Math.min(person.torso, last.person.torso) &&
           forward >= RUN_MIN_SPEED * torso * seconds &&
-          distance(person.center, last.center) <= RUN_MAX_SPEED * torso * seconds
+          distance(person.center, last.person.center) <= RUN_MAX_SPEED * torso * seconds
         );
       })
-      .sort((a, b) => distance(a.center, last.center) - distance(b.center, last.center))[0];
-    if (!before) continue;
-    last = { time: seen.time, ...before };
-    sightings++;
+      .sort(
+        (a, b) => distance(a.center, last.person.center) - distance(b.center, last.person.center),
+      )[0];
+    if (before) trail.push({ time: frame.time, person: before });
   }
-  return sightings >= RUN_MIN_SIGHTINGS;
+  return trail;
+}
+
+function isRunningIn(pose: Pose, recent: Seen[], time: number, runUp: RunUp): boolean {
+  const person = { center: torsoCenter(pose), torso: torsoLength(pose) };
+  return runTrail({ time, person }, recent, runUp).length >= RUN_MIN_SIGHTINGS;
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {
@@ -372,13 +385,18 @@ function claimedByOthers(others: Point[], poses: Pose[]): Map<Point, Pose> {
 /**
  * Follows the person who started a recording back through earlier frames (oldest first), the
  * same way the recording follows them forwards. Fills the part kept from before the start.
+ * Someone who ran in (`runUp`) is followed like the automatic start does (`runTrail`), and
+ * not before that: the nearest skeleton led onto a girl squatting by the springboard, who was
+ * then shown for the whole wait and run-up.
  */
 export function traceBack(
   earlier: { time: number; poses: Pose[] }[],
   pose: Pose,
   time: number,
   aspectRatio: number,
+  runUp: RunUp | null,
 ): { time: number; pose: Pose }[] {
+  if (runUp) return traceRunner(earlier, pose, time, aspectRatio, runUp);
   const found: { time: number; pose: Pose }[] = [];
   let target = torsoCenter(scalePose(pose, aspectRatio));
   let lastSeen = time;
@@ -400,6 +418,54 @@ export function traceBack(
     lastSeen = frame.time;
   }
   return found.reverse();
+}
+
+/**
+ * The runner's sure sightings (`runTrail`), and in the frames between two of them the skeleton
+ * nearest the straight path between them.
+ */
+function traceRunner(
+  earlier: { time: number; poses: Pose[] }[],
+  pose: Pose,
+  time: number,
+  aspectRatio: number,
+  runUp: RunUp,
+): { time: number; pose: Pose }[] {
+  const toPerson = (candidate: Pose) => {
+    const scaled = scalePose(candidate, aspectRatio);
+    return { center: torsoCenter(scaled), torso: torsoLength(scaled), pose: candidate };
+  };
+  const frames = earlier
+    .filter((frame) => frame.time < time)
+    .map((frame) => ({ time: frame.time, people: frame.poses.map(toPerson) }));
+  const trail = runTrail({ time, person: toPerson(pose) }, frames, runUp).reverse();
+
+  const found: { time: number; pose: Pose }[] = [];
+  for (const frame of frames) {
+    if (frame.time < trail[0].time) continue;
+    const next = trail.findIndex((sighting) => sighting.time >= frame.time);
+    const after = trail[next];
+    if (after.time === frame.time) {
+      found.push({ time: frame.time, pose: after.person.pose });
+      continue;
+    }
+    const before = trail[next - 1].person;
+    const share = (frame.time - trail[next - 1].time) / (after.time - trail[next - 1].time);
+    const path = {
+      x: before.center.x + (after.person.center.x - before.center.x) * share,
+      y: before.center.y + (after.person.center.y - before.center.y) * share,
+    };
+    const torso = Math.max(before.torso, after.person.torso);
+    const best = frame.people
+      .filter(
+        (person) =>
+          distance(person.center, path) <= RUN_PATH_TORSOS * torso &&
+          torso <= RUN_MAX_SIZE_CHANGE * person.torso,
+      )
+      .sort((a, b) => distance(a.center, path) - distance(b.center, path))[0];
+    if (best) found.push({ time: frame.time, pose: best.pose });
+  }
+  return found;
 }
 
 function nearest(poses: Pose[], point: Point): Pose {

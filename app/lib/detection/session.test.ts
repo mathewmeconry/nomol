@@ -191,9 +191,46 @@ describe('starting automatically', () => {
       time,
       poses: [bystander, runner(time)],
     }));
-    const found = traceBack(earlier, runner(500), 500, 1);
+    const found = traceBack(earlier, runner(500), 500, 1, 'left');
     expect(found.map((frame) => frame.time)).toEqual([0, 100, 200, 300, 400]);
     expect(found.every((frame, i) => frame.pose === earlier[i].poses[1])).toBe(true);
+  });
+
+  describe('tracing the runner back', () => {
+    const runner = (t: number) => makePose({ x: 0.1 + (0.6 * t) / 1000, feetY: 0.9 });
+    // Half the size, on the springboard right where the runner is about to be, torso at the
+    // runner's height.
+    const squatting = makePose({ x: 0.37, feetY: 0.79 }).map((p) => ({
+      ...p,
+      x: 0.37 + (p.x - 0.37) / 2,
+      y: 0.79 - (0.79 - p.y) / 2,
+    }));
+
+    it('passes someone squatting nearer than the last sighting', () => {
+      const earlier = [0, 100, 200, 300, 400].map((time) => ({
+        time,
+        poses: [squatting, runner(time)],
+      }));
+      const found = traceBack(earlier, runner(500), 500, 1, 'left');
+      expect(found.map((frame) => frame.pose)).toEqual(earlier.map((frame) => frame.poses[1]));
+    });
+
+    it('stops where the runner came into the picture, not at someone sitting there', () => {
+      // At 30 per second; the runner appears at 1000 ms.
+      const earlier = Array.from({ length: 45 }, (_, i) => (i * 1000) / 30).map((time) => ({
+        time,
+        poses: time < 1000 ? [squatting] : [squatting, runner(time - 1000)],
+      }));
+      const found = traceBack(earlier, runner(500), 1500, 1, 'left');
+      expect(found.length).toBeGreaterThan(10);
+      expect(found.every((frame) => frame.time >= 1000 && frame.pose !== squatting)).toBe(true);
+    });
+
+    it('follows someone who started by sign or button back while they stood', () => {
+      const standing = makePose({ x: 0.45, feetY: 0.9 });
+      const earlier = [0, 100, 200].map((time) => ({ time, poses: [standing] }));
+      expect(traceBack(earlier, standing, 300, 1, null)).toHaveLength(3);
+    });
   });
 });
 

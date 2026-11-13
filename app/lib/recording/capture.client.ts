@@ -95,7 +95,14 @@ export function rememberFrame(
 /** Adds the gymnast's poses and skeleton frames from the pre-roll, before the trigger. */
 export function addPreroll(active: ActiveRecording, seen: Seen[], pose: Pose, time: number) {
   const inVideo = seen.filter((frame) => frame.time >= active.startedAt);
-  const traced = traceBack(inVideo, pose, time, active.aspectRatio);
+  const { startReason, runUp } = active.recordedWith;
+  const traced = traceBack(
+    inVideo,
+    pose,
+    time,
+    active.aspectRatio,
+    startReason === 'runUp' ? runUp : null,
+  );
   for (const frame of traced) {
     active.frames.push({ time: frame.time - active.startedAt, pose: frame.pose });
   }

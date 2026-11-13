@@ -179,7 +179,10 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   at 3–30 detections per second (heavy and lite, every frame offset) it started in nearly every
   case, 1.4 s in at 30 and ~2.3 s (in flight) at 3; mirrored it didn't, except once at 30 per
   second (hand-held drift plus a hop). On three hall recordings it started far less often on
-  people walking or running around than the first rule.
+  people walking or running around than the first rule. Tracing the runner back over the
+  pre-roll by nearest skeleton put the girl by the springboard into every frame of the wait (29
+  at 30 detections per second) and the replay showed her; following the same trail as the start
+  (gaps filled with the skeleton nearest the path) took 0–1 such frames at 3–30 per second.
 - Phone load, Pixel 8 (measured over adb, `chrome://inspect`): MediaPipe heavy took 25 ms per
   frame at first; after ~45 minutes of camera and models it ran hot (thermal status critical)
   and took 100–300 ms. While the RTMPose replay skeleton was computing (~1.3 s per frame there),
