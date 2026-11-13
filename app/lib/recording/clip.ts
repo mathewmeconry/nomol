@@ -15,8 +15,9 @@ export type Clip = {
   /** MediaPipe's live tracking of the gymnast: drives start, stop and trimming. */
   frames: ClipFrame[];
   /**
-   * The replay skeleton, computed by RTMPose after recording (better upside down). Filled in
-   * while it's being computed, so it may cover only part of the clip; sorted by time.
+   * The replay skeleton, computed after recording with each frame turned so the gymnast appears
+   * upright (better upside down, see `rotation.ts`). Filled in while it's being computed, so it
+   * may cover only part of the clip; sorted by time.
    */
   skeleton: ClipFrame[];
   /** Still from the middle of the routine, as a data URL, for the clip list. */

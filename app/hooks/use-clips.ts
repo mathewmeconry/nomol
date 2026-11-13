@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PoseDetector } from '~/lib/detection/pose-detector.client';
 import { insertFrame, type Clip, type ClipFrame } from '~/lib/recording/clip';
 import { deleteClip, loadClips, saveClip, saveSkeleton } from '~/lib/recording/clip-store.client';
 import {
@@ -10,16 +11,14 @@ import {
 
 /** Older clips are dropped to keep the tablet's memory in check. */
 const MAX_CLIPS = 8;
-const SKELETON_MODELS = {
-  pose: `${import.meta.env.BASE_URL}models/rtmpose-m.onnx`,
-  detector: `${import.meta.env.BASE_URL}models/yolox-s.onnx`,
-};
 
 /**
  * The recent clips, newest first: kept in IndexedDB, and each one's replay skeleton computed
  * in the background after it was recorded.
+ *
+ * @param detector computes the skeleton; clips are only recorded once it's loaded
  */
-export default function useClips() {
+export default function useClips(detector: PoseDetector | null) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [skeletonProgress, setSkeletonProgress] = useState<Record<string, SkeletonProgress>>({});
   const refinerRef = useRef<SkeletonRefiner | null>(null);
@@ -40,8 +39,6 @@ export default function useClips() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => () => refinerRef.current?.close(), []);
 
   /**
    * @param samples frames for the skeleton
@@ -76,15 +73,15 @@ export default function useClips() {
     return remaining;
   }
 
-  /** Runs RTMPose on the saved frames in the background and fills in the clip's skeleton. */
+  /** Runs MediaPipe on the saved frames in the background and fills in the clip's skeleton. */
   function computeSkeleton(
     clip: Clip,
     samples: SkeletonSample[],
     first: { startMs: number; endMs: number },
   ) {
-    if (samples.length === 0) return;
+    if (samples.length === 0 || !detector) return;
     if (!refinerRef.current) {
-      refinerRef.current = createSkeletonRefiner(SKELETON_MODELS);
+      refinerRef.current = createSkeletonRefiner(detector.imageLandmarker);
       if (pausedRef.current) refinerRef.current.pause();
     }
     let skeleton: ClipFrame[] = [];

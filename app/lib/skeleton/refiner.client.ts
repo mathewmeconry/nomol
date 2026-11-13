@@ -1,30 +1,24 @@
+import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { Pose } from '~/lib/detection/pose';
 import type { ClipFrame } from '~/lib/recording/clip';
-import type { Crop } from './rtmpose';
-import type { WorkerRequest, WorkerResponse } from './rtmpose.worker';
-import { DETECTOR_SIZE } from './yolox';
+import { createTracker, fromView, type View } from './rotation';
 
-/**
- * The replay skeleton is off for now: on a Pixel 8 it took ~1.3 s per frame and slowed live
- * detection and recordings while computing. Off, no frames are saved for it and the replay
- * shows no skeleton.
- */
-export const REPLAY_SKELETON = false;
+/** Long side of the saved frames. Enough for MediaPipe, which sees 256 px of the gymnast. */
+const FRAME_SIZE = 640;
+/** Side of the turned view handed to MediaPipe. */
+const VIEW_SIZE = 512;
 
 /** A frame saved while recording; the skeleton is computed from it afterwards. */
 export type SkeletonSample = {
   /** ms since the recording started, like `ClipFrame.time` */
   time: number;
-  /** The video frame scaled to the detector's size (see `captureFrame`). */
+  /** The video frame at `FRAME_SIZE` (JPEG). */
   image: Promise<Blob>;
-  /** MediaPipe's pose of the gymnast in this frame. */
+  /** The live tracking's pose of the gymnast in this frame. */
   tracked: Pose;
-  /** Crop from MediaPipe's poses, in the saved frame's pixels. */
-  fallback: Crop;
 };
 
-/** `failed`: the models couldn't load, e.g. offline before they were ever cached. */
-export type SkeletonProgress = { stage: 'download' | 'compute' | 'failed'; percent: number };
+export type SkeletonProgress = { stage: 'compute' | 'failed'; percent: number };
 
 export type SkeletonJob = {
   samples: SkeletonSample[];
@@ -36,101 +30,95 @@ export type SkeletonJob = {
   isCancelled: () => boolean;
 };
 
-/** Size of the saved frames: the detector's input, which is plenty for RTMPose's crop too. */
-export function frameSize(video: HTMLVideoElement) {
-  const scale = Math.min(1, DETECTOR_SIZE / Math.max(video.videoWidth, video.videoHeight));
-  return {
-    width: Math.round(video.videoWidth * scale),
-    height: Math.round(video.videoHeight * scale),
-  };
-}
-
-/** The current video frame at `frameSize`, as JPEG to keep long recordings small in memory. */
+/** The current video frame at `FRAME_SIZE`, as JPEG to keep long recordings small in memory. */
 export function captureFrame(video: HTMLVideoElement): Promise<Blob> {
-  const { width, height } = frameSize(video);
-  const canvas = new OffscreenCanvas(width, height);
-  canvas.getContext('2d')!.drawImage(video, 0, 0, width, height);
+  const scale = Math.min(1, FRAME_SIZE / Math.max(video.videoWidth, video.videoHeight));
+  const canvas = new OffscreenCanvas(
+    Math.round(video.videoWidth * scale),
+    Math.round(video.videoHeight * scale),
+  );
+  canvas.getContext('2d')!.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
 
+let viewCanvas: OffscreenCanvas | null = null;
+
+/** MediaPipe on the frame turned and cropped to `view`; poses normalized to the frame. */
+function detectView(landmarker: PoseLandmarker, frame: ImageBitmap, view: View): Pose[] {
+  viewCanvas ??= new OffscreenCanvas(VIEW_SIZE, VIEW_SIZE);
+  const ctx = viewCanvas.getContext('2d')!;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0, 0, VIEW_SIZE, VIEW_SIZE);
+  ctx.translate(VIEW_SIZE / 2, VIEW_SIZE / 2);
+  ctx.scale(VIEW_SIZE / view.size, VIEW_SIZE / view.size);
+  ctx.rotate(-view.angle);
+  ctx.translate(-view.center.x, -view.center.y);
+  ctx.drawImage(frame, 0, 0);
+  return landmarker.detect(viewCanvas).landmarks.map((pose) =>
+    pose.map((landmark) => {
+      const point = fromView(landmark, view);
+      return {
+        x: point.x / frame.width,
+        y: point.y / frame.height,
+        visibility: landmark.visibility,
+      };
+    }),
+  );
+}
+
+/** Lets live detection and the page run between two skeleton frames. */
+function yieldToPage() {
+  return new Promise((resolve) => setTimeout(resolve));
+}
+
 /**
- * Runs YOLOX + RTMPose in a worker, one clip after the other, so live detection for the next
- * gymnast keeps running. The models (~90 MB) load on the first clip.
+ * Computes the replay skeleton with MediaPipe (see `rotation.ts`), one clip after the other, so
+ * live detection for the next gymnast keeps running. From the routine's start, where the
+ * gymnast is upright, forwards to the end, then backwards over the wait before it.
  */
-export function createSkeletonRefiner(models: { pose: string; detector: string }) {
-  const worker = new Worker(new URL('./rtmpose.worker.ts', import.meta.url), { type: 'module' });
-  const pending = new Map<number, { resolve: (pose: Pose) => void; reject: (e: Error) => void }>();
-  let loading: { resolve: () => void; reject: (e: Error) => void; onProgress: (p: number) => void };
-  let ready: Promise<void> | null = null;
-  let nextId = 0;
+export function createSkeletonRefiner(loadLandmarker: () => Promise<PoseLandmarker>) {
   let queue = Promise.resolve();
   /** Pending while paused (see `pause`). */
   let unpaused = Promise.resolve();
   let resume: (() => void) | null = null;
 
-  worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-    const message = event.data;
-    if (message.type === 'progress') loading.onProgress(message.percent);
-    else if (message.type === 'ready') loading.resolve();
-    else if (message.type === 'pose') {
-      pending.get(message.id)?.resolve(message.pose);
-      pending.delete(message.id);
-    } else if (message.id === undefined) {
-      loading.reject(new Error(message.message));
-    } else {
-      pending.get(message.id)?.reject(new Error(message.message));
-      pending.delete(message.id);
-    }
-  };
-
-  function post(request: WorkerRequest) {
-    worker.postMessage(request);
-  }
-
-  function load(onProgress: (percent: number) => void) {
-    ready ??= new Promise<void>((resolve, reject) => {
-      loading = { resolve, reject, onProgress };
-      post({ type: 'load', poseUrl: models.pose, detectorUrl: models.detector });
-    }).catch((error: unknown) => {
-      ready = null; // try again with the next clip, e.g. once back online
-      throw error;
-    });
-    return ready;
-  }
-
-  async function poseOf(sample: SkeletonSample) {
-    const id = nextId++;
-    const image = await sample.image;
-    return new Promise<Pose>((resolve, reject) => {
-      pending.set(id, { resolve, reject });
-      post({ type: 'pose', id, image, tracked: sample.tracked, fallback: sample.fallback });
-    });
-  }
-
   async function run(job: SkeletonJob) {
-    await load((percent) => job.onProgress({ stage: 'download', percent }));
-    const inFirst = (sample: SkeletonSample) =>
-      sample.time >= job.first.startMs && sample.time <= job.first.endMs;
-    const ordered = [...job.samples.filter(inFirst), ...job.samples.filter((s) => !inFirst(s))];
-    for (const [i, sample] of ordered.entries()) {
-      await unpaused;
-      if (job.isCancelled()) return;
-      job.onProgress({ stage: 'compute', percent: Math.floor((i / ordered.length) * 100) });
-      job.onFrame({ time: sample.time, pose: await poseOf(sample) });
+    const landmarker = await loadLandmarker();
+    const start = job.samples.findIndex((sample) => sample.time >= job.first.startMs);
+    const split = start === -1 ? 0 : start;
+    const passes = [job.samples.slice(split), job.samples.slice(0, split).reverse()];
+    let done = 0;
+    for (const pass of passes) {
+      let next: ReturnType<typeof createTracker> | null = null;
+      for (const sample of pass) {
+        await unpaused;
+        if (job.isCancelled()) return;
+        job.onProgress({
+          stage: 'compute',
+          percent: Math.floor((done++ / job.samples.length) * 100),
+        });
+        const frame = await createImageBitmap(await sample.image);
+        next ??= createTracker(frame.width, frame.height);
+        const pose = next(sample.tracked, (view) => detectView(landmarker, frame, view));
+        frame.close();
+        if (pose) job.onFrame({ time: sample.time, pose });
+        await yieldToPage();
+      }
     }
     job.onProgress({ stage: 'compute', percent: 100 });
   }
 
   return {
-    /** Resolves when the clip is done (or cancelled); rejects if the models can't load. */
+    /** Resolves when the clip is done (or cancelled); rejects if MediaPipe can't start. */
     refine(job: SkeletonJob) {
       const result = queue.then(() => run(job));
       queue = result.catch(() => {});
       return result;
     },
     /**
-     * Holds off between frames, e.g. while recording: on a Pixel 8 computing the skeleton
-     * alongside dropped the recording from ~43 to ~25 fps, with gaps up to 0.25 s, and live
+     * Holds off between frames, e.g. while recording: on a Pixel 8 computing the earlier RTMPose
+     * skeleton alongside dropped the recording from ~43 to ~25 fps, with gaps up to 0.25 s, and live
      * detection from ~10 to ~6.5 per second.
      */
     pause() {
@@ -140,9 +128,6 @@ export function createSkeletonRefiner(models: { pose: string; detector: string }
     resume() {
       resume?.();
       resume = null;
-    },
-    close() {
-      worker.terminate();
     },
   };
 }

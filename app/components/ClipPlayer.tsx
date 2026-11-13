@@ -17,7 +17,7 @@ import { LIMB_COLORS, drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { frameDuration, poseAt, routineRange, type Clip } from '~/lib/recording/clip';
 import type { Point } from '~/lib/detection/pose';
 import { exportClip } from '~/lib/recording/export.client';
-import { REPLAY_SKELETON, type SkeletonProgress } from '~/lib/skeleton/refiner.client';
+import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
 import { FULL_VIEW, zoomView, type View } from '~/lib/zoom';
 
 /** One button cycles through these, to save space on phones. */
@@ -37,9 +37,8 @@ const STEPS = [
 const CONTROLS_HIDE_MS = 3000;
 
 const SKELETON_TEXT: Record<SkeletonProgress['stage'], string> = {
-  download: 'Skelett-Modell wird geladen …',
   compute: 'Skelett wird berechnet …',
-  failed: 'Skelett konnte nicht berechnet werden. Prüfe die Internetverbindung.',
+  failed: 'Skelett konnte nicht berechnet werden.',
 };
 
 function formatTime(ms: number) {
@@ -77,7 +76,7 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
   // Follows the video's own play/pause events, so the button never disagrees with it.
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [skeleton, setSkeleton] = useState(REPLAY_SKELETON);
+  const [skeleton, setSkeleton] = useState(true);
   const [timeMs, setTimeMs] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
@@ -310,16 +309,14 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
           >
             {SPEEDS.find((s) => s.value === speed)?.label}
           </Button>
-          {REPLAY_SKELETON && (
-            <Toggle
-              variant="outline"
-              pressed={skeleton}
-              onPressedChange={setSkeleton}
-              className="data-[state=on]:text-sky-300"
-            >
-              Skelett
-            </Toggle>
-          )}
+          <Toggle
+            variant="outline"
+            pressed={skeleton}
+            onPressedChange={setSkeleton}
+            className="data-[state=on]:text-sky-300"
+          >
+            Skelett
+          </Toggle>
           {skeleton && (
             <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
               {(

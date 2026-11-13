@@ -10,7 +10,7 @@ const STORE = 'clips';
 
 type StoredClip = Omit<Clip, 'url' | 'skeleton'> & {
   video: Blob;
-  /** Missing in clips stored before the RTMPose skeleton existed. */
+  /** Missing in clips stored before the replay skeleton existed. */
   skeleton?: ClipFrame[];
 };
 

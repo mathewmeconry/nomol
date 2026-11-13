@@ -1,4 +1,4 @@
-import { Camera, Circle, SquareDashed, Volume2, Zap } from 'lucide-react';
+import { Camera, Circle, Square, SquareDashed, Volume2, Zap } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   Select,
@@ -53,6 +53,7 @@ type Props = {
   /** Detection is ready, so "Aufnahme starten" can work. */
   canArm: boolean;
   onArm: (armed: boolean) => void;
+  onStop: () => void;
 };
 
 /**
@@ -73,6 +74,7 @@ export default function LiveControls({
   armed,
   canArm,
   onArm,
+  onStop,
 }: Props) {
   const recording = status === 'recording';
   return (
@@ -163,22 +165,29 @@ export default function LiveControls({
           <SquareDashed />
           Startzone
         </Toggle>
-        <Button
-          size="sm"
-          variant={armed ? 'ghost' : 'destructive'}
-          disabled={recording || !canArm || editingZone}
-          onClick={() => onArm(!armed)}
-          className={cn('rounded-full', armed && floating)}
-        >
-          {armed ? (
-            'Abbrechen'
-          ) : (
-            <>
-              <Circle className="fill-current" />
-              Aufnahme starten
-            </>
-          )}
-        </Button>
+        {recording ? (
+          <Button size="sm" variant="destructive" onClick={onStop} className="rounded-full">
+            <Square className="fill-current" />
+            Aufnahme stoppen
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant={armed ? 'ghost' : 'destructive'}
+            disabled={!canArm || editingZone}
+            onClick={() => onArm(!armed)}
+            className={cn('rounded-full', armed && floating)}
+          >
+            {armed ? (
+              'Abbrechen'
+            ) : (
+              <>
+                <Circle className="fill-current" />
+                Aufnahme starten
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );

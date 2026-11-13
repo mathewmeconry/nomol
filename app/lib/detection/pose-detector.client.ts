@@ -27,6 +27,8 @@ const MAX_POSES = 4;
 
 export type PoseDetector = {
   detect: (video: HTMLVideoElement, timeMs: number) => Pose[];
+  /** Heavy, for single images: the replay skeleton. Created on first use. */
+  imageLandmarker: () => Promise<PoseLandmarker>;
   close: () => void;
 };
 
@@ -35,12 +37,11 @@ export async function createPoseDetector(
   onProgress?: (percent: number) => void,
 ): Promise<PoseDetector> {
   const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-  async function create(size: 'heavy' | 'lite', progress?: (percent: number) => void) {
-    const model = await download(modelUrl(size), progress);
+  function create(model: Uint8Array, runningMode: 'VIDEO' | 'IMAGE') {
     const options = (delegate: 'GPU' | 'CPU') =>
       PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetBuffer: model, delegate },
-        runningMode: 'VIDEO',
+        runningMode,
         numPoses: MAX_POSES,
       });
     // The GPU delegate is much faster but can fail to start on some devices. Note that MediaPipe
@@ -48,7 +49,10 @@ export async function createPoseDetector(
     return options('GPU').catch((_error: unknown) => options('CPU'));
   }
 
-  let landmarker = await create('heavy', onProgress);
+  // Kept for the replay skeleton, which uses heavy even when live detection falls back to lite.
+  const heavy = await download(modelUrl('heavy'), onProgress);
+  let landmarker = await create(heavy, 'VIDEO');
+  let image: Promise<PoseLandmarker> | null = null;
   let timings: number[] = [];
   let measuring = true;
 
@@ -64,17 +68,24 @@ export async function createPoseDetector(
           if (median > SLOW_MS) {
             measuring = false;
             // Swapped between frames: detection is synchronous, so no frame sees a closed model.
-            void create('lite').then((lite) => {
-              landmarker.close();
-              landmarker = lite;
-            });
+            void download(modelUrl('lite'))
+              .then((lite) => create(lite, 'VIDEO'))
+              .then((lite) => {
+                landmarker.close();
+                landmarker = lite;
+              });
           }
         }
       }
       return poses;
     },
+    imageLandmarker() {
+      image ??= create(heavy, 'IMAGE');
+      return image;
+    },
     close() {
       landmarker.close();
+      void image?.then((created) => created.close());
     },
   };
 }

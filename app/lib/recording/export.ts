@@ -2,7 +2,8 @@ import type { Clip } from './clip';
 
 /**
  * Bump when the JSON layout changes, so old exports can still be read correctly.
- * 2: adds `skeleton` (RTMPose, the replay skeleton) next to `frames` (MediaPipe, live).
+ * 2: adds `skeleton` (the replay skeleton) next to `frames` (MediaPipe, live). Until
+ * November 2026 RTMPose computed it, since then MediaPipe on turned frames (see `appVersion`).
  * 3: adds `appVersion`, `startReason` and `runUp` (null for clips recorded before version 3).
  */
 const EXPORT_VERSION = 3;

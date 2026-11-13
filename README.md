@@ -26,9 +26,8 @@ service worker (`public/sw.js`, production builds only) keeps the app and the mo
 offline.
 
 Live detection (start sign, following, stopping) uses MediaPipe Pose. The replay skeleton is
-computed after each recording with [RTMPose](https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose)
-and its YOLOX person detector (RTMPose-m and YOLOX-s, Apache-2.0, in `public/models/`), which
-handle handstands far better.
+computed after each recording with the same model, each frame turned so the gymnast appears
+upright, which handles handstands far better.
 
 The last 8 clips are kept in the browser (IndexedDB), so they survive reloads. Nothing is
 uploaded; **Export** in the player shares or downloads a clip as video plus `.nomol.txt` (JSON body

@@ -5,13 +5,7 @@ import { routineRange, type Clip, type ClipFrame, type RecordedWith } from '~/li
 import { PREROLL_MAX_MS } from '~/lib/recording/preroll.client';
 import type { Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
-import {
-  REPLAY_SKELETON,
-  captureFrame,
-  frameSize,
-  type SkeletonSample,
-} from '~/lib/skeleton/refiner.client';
-import { cropAround } from '~/lib/skeleton/rtmpose';
+import { captureFrame, type SkeletonSample } from '~/lib/skeleton/refiner.client';
 
 /**
  * The clip's thumbnail should come from the middle of the routine, whose timing isn't known
@@ -19,12 +13,10 @@ import { cropAround } from '~/lib/skeleton/rtmpose';
  */
 const STILL_EVERY_MS = 500;
 /**
- * How often a frame is saved for the RTMPose skeleton. 10 per second look smooth with
+ * How often a frame is saved for the replay skeleton. 10 per second look smooth with
  * interpolation and keep the computation after a recording short.
  */
 const SAMPLE_EVERY_MS = 100;
-/** The fallback crop covers the gymnast's poses over this long (see `cropAround`). */
-const CROP_WINDOW_MS = 500;
 
 /** Everything gathered while recording. Times in `frames`, `stills` and `samples` are video times. */
 export type ActiveRecording = {
@@ -75,13 +67,8 @@ export function recordPose(
   const now = time - active.startedAt;
   active.frames.push({ time: now, pose });
   const last = active.samples.at(-1);
-  if (!REPLAY_SKELETON || (last && now - last.time < SAMPLE_EVERY_MS)) return;
-  active.samples.push({
-    time: now,
-    image: captureFrame(video),
-    tracked: pose,
-    ...cropAt(active, video, now),
-  });
+  if (last && now - last.time < SAMPLE_EVERY_MS) return;
+  active.samples.push({ time: now, image: captureFrame(video), tracked: pose });
 }
 
 export function recordStill(active: ActiveRecording, video: HTMLVideoElement, time: number) {
@@ -104,20 +91,14 @@ export function rememberFrame(
   const kept = seen.filter((frame) => time - frame.time <= PREROLL_MAX_MS);
   const lastImage = kept.filter((frame) => frame.image).at(-1);
   const image =
-    REPLAY_SKELETON && poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
+    poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
       ? captureFrame(video)
       : null;
   return [...kept, { time, poses, image }];
 }
 
 /** Adds the gymnast's poses and skeleton frames from the pre-roll, before the trigger. */
-export function addPreroll(
-  active: ActiveRecording,
-  seen: Seen[],
-  video: HTMLVideoElement,
-  pose: Pose,
-  time: number,
-) {
+export function addPreroll(active: ActiveRecording, seen: Seen[], pose: Pose, time: number) {
   const inVideo = seen.filter((frame) => frame.time >= active.startedAt);
   const traced = traceBack(inVideo, pose, time, active.aspectRatio);
   for (const frame of traced) {
@@ -126,24 +107,8 @@ export function addPreroll(
   for (const frame of traced) {
     const image = inVideo.find((other) => other.time === frame.time)?.image;
     if (!image) continue;
-    const now = frame.time - active.startedAt;
-    active.samples.push({ time: now, image, tracked: frame.pose, ...cropAt(active, video, now) });
+    active.samples.push({ time: frame.time - active.startedAt, image, tracked: frame.pose });
   }
-}
-
-/** The fallback crop for a skeleton frame at video time `now`. */
-function cropAt(active: ActiveRecording, video: HTMLVideoElement, now: number) {
-  const recent = active.frames.filter(
-    (frame) => frame.time <= now && frame.time >= now - CROP_WINDOW_MS,
-  );
-  const { width, height } = frameSize(video);
-  return {
-    fallback: cropAround(
-      recent.map((frame) => frame.pose),
-      width,
-      height,
-    ),
-  };
 }
 
 /** The finished clip, with its thumbnail from the middle of the routine. */

@@ -51,7 +51,13 @@ export default function Tablet() {
   const wideAngle = useWideAngle(camera.status === 'ready' ? camera.stream : null);
   const poseDetector = usePoseDetector();
   const { detector } = poseDetector;
-  const { clips, skeletonProgress, add: addClip, remove: removeClip, pauseSkeleton } = useClips();
+  const {
+    clips,
+    skeletonProgress,
+    add: addClip,
+    remove: removeClip,
+    pauseSkeleton,
+  } = useClips(detector);
   const soundReady = useTapEffects();
   useWakeLock();
 
@@ -61,6 +67,8 @@ export default function Tablet() {
   const activeRef = useRef<ActiveRecording | null>(null);
   const prerollRef = useRef<Preroll | null>(null);
   const seenRef = useRef<Seen[]>([]);
+  /** Capture time of the last detected frame: where a recording stopped by hand ends. */
+  const lastFrameTimeRef = useRef(0);
   const clipStripScrollRef = useRef(0);
 
   const [zone, setZone] = useState<Zone>(() =>
@@ -132,6 +140,7 @@ export default function Tablet() {
    */
   const onFrame = useEffectEvent(
     (video: HTMLVideoElement, time: number, deliveredAt: number, poses: Pose[]) => {
+      lastFrameTimeRef.current = time;
       const result = step(sessionRef.current, {
         time,
         poses,
@@ -160,7 +169,7 @@ export default function Tablet() {
           { startReason: result.event.reason, runUp },
         );
         activeRef.current = active;
-        if (preroll) addPreroll(active, seenRef.current, video, result.event.pose, time);
+        if (preroll) addPreroll(active, seenRef.current, result.event.pose, time);
         playStartSound();
         setArmedAt(null);
       } else if (prerollRef.current) {
@@ -386,6 +395,12 @@ export default function Tablet() {
         armed={armedAt !== null}
         canArm={detector !== null}
         onArm={(armed) => setArmedAt(armed ? Date.now() : null)}
+        onStop={() => {
+          // Back to waiting for a start, as after a stop by sign, idling or leaving.
+          sessionRef.current = initialSession;
+          setStatus('idle');
+          void finishRecording(lastFrameTimeRef.current);
+        }}
       />
 
       {!showReplay && !editingZone && status === 'idle' && !loading && (

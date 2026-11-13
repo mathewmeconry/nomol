@@ -50,11 +50,6 @@ export default function App() {
   // Offline support (public/sw.js). Only in production builds: in dev it would cache stale modules.
   useEffect(() => {
     if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-    // The worker's isolation headers (see sw.js) only apply to pages it serves: reload once when
-    // it takes over, so the first visit (and the first after an update) gets the faster skeleton.
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!crossOriginIsolated) location.reload();
-    });
     void navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)
       .then(() => navigator.serviceWorker.ready)
