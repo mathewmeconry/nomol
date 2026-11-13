@@ -5,7 +5,12 @@ import { routineRange, type Clip, type ClipFrame, type RecordedWith } from '~/li
 import { PREROLL_MAX_MS } from '~/lib/recording/preroll.client';
 import type { Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
-import { captureFrame, frameSize, type SkeletonSample } from '~/lib/skeleton/refiner.client';
+import {
+  REPLAY_SKELETON,
+  captureFrame,
+  frameSize,
+  type SkeletonSample,
+} from '~/lib/skeleton/refiner.client';
 import { cropAround } from '~/lib/skeleton/rtmpose';
 
 /**
@@ -70,7 +75,7 @@ export function recordPose(
   const now = time - active.startedAt;
   active.frames.push({ time: now, pose });
   const last = active.samples.at(-1);
-  if (last && now - last.time < SAMPLE_EVERY_MS) return;
+  if (!REPLAY_SKELETON || (last && now - last.time < SAMPLE_EVERY_MS)) return;
   active.samples.push({
     time: now,
     image: captureFrame(video),
@@ -99,7 +104,7 @@ export function rememberFrame(
   const kept = seen.filter((frame) => time - frame.time <= PREROLL_MAX_MS);
   const lastImage = kept.filter((frame) => frame.image).at(-1);
   const image =
-    poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
+    REPLAY_SKELETON && poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
       ? captureFrame(video)
       : null;
   return [...kept, { time, poses, image }];

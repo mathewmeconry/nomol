@@ -4,6 +4,13 @@ import type { Crop } from './rtmpose';
 import type { WorkerRequest, WorkerResponse } from './rtmpose.worker';
 import { DETECTOR_SIZE } from './yolox';
 
+/**
+ * The replay skeleton is off for now: on a Pixel 8 it took ~1.3 s per frame and slowed live
+ * detection and recordings while computing. Off, no frames are saved for it and the replay
+ * shows no skeleton.
+ */
+export const REPLAY_SKELETON = false;
+
 /** A frame saved while recording; the skeleton is computed from it afterwards. */
 export type SkeletonSample = {
   /** ms since the recording started, like `ClipFrame.time` */

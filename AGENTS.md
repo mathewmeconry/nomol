@@ -78,6 +78,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   RTMPose (WASM, up to 4 threads) on a crop around it. Without WebGPU, or if no box contains the gymnast, the crop
   comes from MediaPipe's poses. Models in `public/models/` (`yolox-s.onnx` 36 MB,
   `rtmpose-m.onnx` 54 MB, from openmmlab's ONNX SDK releases). Paused while recording.
+  **Switched off for now** (`REPLAY_SKELETON` in `refiner.client.ts`): too slow on phones (see
+  the phone load notes); the owner wants to decide how to continue with it.
 - Recording keyframes every 0.5 s (`videoKeyFrameIntervalDuration`): phones otherwise wrote one
   every ~3 s, and scrubbing the replay looked frozen while each seek decoded seconds of video.
 - Recording: MediaRecorder on the camera stream; the last 8 clips are kept in IndexedDB
