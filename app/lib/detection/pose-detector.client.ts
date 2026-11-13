@@ -27,32 +27,31 @@ const MAX_POSES = 4;
 
 export type PoseDetector = {
   detect: (video: HTMLVideoElement, timeMs: number) => Pose[];
-  /** Heavy, for single images: the replay skeleton. Created on first use. */
-  imageLandmarker: () => Promise<PoseLandmarker>;
+  /** The heavy model, for the replay skeleton: heavy even when live detection fell back to lite. */
+  heavyModel: Uint8Array;
   close: () => void;
 };
+
+/** Also used in the replay skeleton's worker. */
+export async function createLandmarker(model: Uint8Array, runningMode: 'VIDEO' | 'IMAGE') {
+  const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+  const options = (delegate: 'GPU' | 'CPU') =>
+    PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetBuffer: model, delegate },
+      runningMode,
+      numPoses: MAX_POSES,
+    });
+  // The GPU delegate is much faster but can fail to start on some devices. Note that MediaPipe
+  // still needs WebGL to read video frames, so the CPU fallback doesn't help without it.
+  return options('GPU').catch((_error: unknown) => options('CPU'));
+}
 
 /** @param onProgress download progress of the model in percent, the bulk of the startup time */
 export async function createPoseDetector(
   onProgress?: (percent: number) => void,
 ): Promise<PoseDetector> {
-  const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-  function create(model: Uint8Array, runningMode: 'VIDEO' | 'IMAGE') {
-    const options = (delegate: 'GPU' | 'CPU') =>
-      PoseLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetBuffer: model, delegate },
-        runningMode,
-        numPoses: MAX_POSES,
-      });
-    // The GPU delegate is much faster but can fail to start on some devices. Note that MediaPipe
-    // still needs WebGL to read video frames, so the CPU fallback doesn't help without it.
-    return options('GPU').catch((_error: unknown) => options('CPU'));
-  }
-
-  // Kept for the replay skeleton, which uses heavy even when live detection falls back to lite.
-  const heavy = await download(modelUrl('heavy'), onProgress);
-  let landmarker = await create(heavy, 'VIDEO');
-  let image: Promise<PoseLandmarker> | null = null;
+  const heavyModel = await download(modelUrl('heavy'), onProgress);
+  let landmarker = await createLandmarker(heavyModel, 'VIDEO');
   let timings: number[] = [];
   let measuring = true;
 
@@ -69,7 +68,7 @@ export async function createPoseDetector(
             measuring = false;
             // Swapped between frames: detection is synchronous, so no frame sees a closed model.
             void download(modelUrl('lite'))
-              .then((lite) => create(lite, 'VIDEO'))
+              .then((lite) => createLandmarker(lite, 'VIDEO'))
               .then((lite) => {
                 landmarker.close();
                 landmarker = lite;
@@ -79,13 +78,9 @@ export async function createPoseDetector(
       }
       return poses;
     },
-    imageLandmarker() {
-      image ??= create(heavy, 'IMAGE');
-      return image;
-    },
+    heavyModel,
     close() {
       landmarker.close();
-      void image?.then((created) => created.close());
     },
   };
 }

@@ -73,7 +73,7 @@ export default function useClips(detector: PoseDetector | null) {
   ) {
     if (samples.length === 0 || !detector) return;
     if (!refinerRef.current) {
-      refinerRef.current = createSkeletonRefiner(detector.imageLandmarker);
+      refinerRef.current = createSkeletonRefiner(detector.heavyModel);
       if (pausedRef.current) refinerRef.current.pause();
     }
     let skeleton: ClipFrame[] = [];

@@ -75,7 +75,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   up), the lite model takes over. MediaPipe drives
   everything live (sign, tracking, stop, trimming).
 - Replay skeleton (`app/lib/skeleton/`): MediaPipe heavy again, as a second landmarker in IMAGE
-  mode on the already loaded model, on the main thread between live frames. While recording, the
+  mode on the already loaded model, in a worker (`skeleton.worker.ts`; on the page it blocked
+  the replay up to ~0.5 s per frame, sometimes 1.4 s, on a Pixel 8). While recording, the
   frame (long side 640) and the live tracked pose are saved 10× per second as JPEG. Afterwards
   each frame is cropped around the live torso centre and turned by the previous frame's body
   angle plus its turning speed, so the gymnast appears upright; if MediaPipe sees no upright
@@ -109,7 +110,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   (`poseAt`). `capture.client.ts` gathers poses, skeleton frames and stills while recording and
   turns them into a clip.
 - `app/lib/skeleton/`: replay skeleton. `rotation.ts` the turned views and the tracking through
-  a clip (pure, tested), `refiner.client.ts` frame capture, drawing the views, the job queue.
+  a clip (pure, tested), `skeleton.worker.ts` MediaPipe on the turned views, `refiner.client.ts`
+  frame capture and the job queue.
 - `app/tests/poses.ts`: builds synthetic poses for tests.
 
 ## Detection notes (learned from real footage)

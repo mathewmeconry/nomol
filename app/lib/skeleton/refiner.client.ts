@@ -1,12 +1,9 @@
-import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import type { Pose } from '~/lib/detection/pose';
 import type { ClipFrame } from '~/lib/recording/clip';
-import { createTracker, fromView, type View } from './rotation';
+import type { WorkerRequest, WorkerResponse } from './skeleton.worker';
 
 /** Long side of the saved frames. Enough for MediaPipe, which sees 256 px of the gymnast. */
 const FRAME_SIZE = 640;
-/** Side of the turned view handed to MediaPipe. */
-const VIEW_SIZE = 512;
 
 /** A frame saved while recording; the skeleton is computed from it afterwards. */
 export type SkeletonSample = {
@@ -41,56 +38,47 @@ export function captureFrame(video: HTMLVideoElement): Promise<Blob> {
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
 
-let viewCanvas: OffscreenCanvas | null = null;
-
-/** MediaPipe on the frame turned and cropped to `view`; poses normalized to the frame. */
-function detectView(landmarker: PoseLandmarker, frame: ImageBitmap, view: View): Pose[] {
-  viewCanvas ??= new OffscreenCanvas(VIEW_SIZE, VIEW_SIZE);
-  const ctx = viewCanvas.getContext('2d')!;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = 'black';
-  ctx.fillRect(0, 0, VIEW_SIZE, VIEW_SIZE);
-  ctx.translate(VIEW_SIZE / 2, VIEW_SIZE / 2);
-  ctx.scale(VIEW_SIZE / view.size, VIEW_SIZE / view.size);
-  ctx.rotate(-view.angle);
-  ctx.translate(-view.center.x, -view.center.y);
-  ctx.drawImage(frame, 0, 0);
-  return landmarker.detect(viewCanvas).landmarks.map((pose) =>
-    pose.map((landmark) => {
-      const point = fromView(landmark, view);
-      return {
-        x: point.x / frame.width,
-        y: point.y / frame.height,
-        visibility: landmark.visibility,
-      };
-    }),
-  );
-}
-
-/** Lets live detection and the page run between two skeleton frames. */
-function yieldToPage() {
-  return new Promise((resolve) => setTimeout(resolve));
-}
-
 /**
- * Computes the replay skeleton with MediaPipe (see `rotation.ts`), one clip after the other, so
- * live detection for the next gymnast keeps running. From the routine's start, where the
- * gymnast is upright, forwards to the end, then backwards over the wait before it.
+ * Computes the replay skeleton with MediaPipe (see `rotation.ts`) in a worker, one clip after
+ * the other: on the page it blocked the replay for up to ~0.5 s per frame on a Pixel 8. From
+ * the routine's start, where the gymnast is upright, forwards to the end, then backwards over
+ * the wait before it.
+ *
+ * @param model the heavy MediaPipe model, already downloaded for live detection
  */
-export function createSkeletonRefiner(loadLandmarker: () => Promise<PoseLandmarker>) {
+export function createSkeletonRefiner(model: Uint8Array) {
   let queue = Promise.resolve();
   /** Pending while paused (see `pause`). */
   let unpaused = Promise.resolve();
   let resume: (() => void) | null = null;
+  let worker: Promise<Worker> | null = null;
+
+  /** Sends one request and waits for its answer; the worker handles one at a time. */
+  function ask(target: Worker, request: WorkerRequest) {
+    return new Promise<WorkerResponse>((resolve) => {
+      target.onmessage = (event: MessageEvent<WorkerResponse>) => resolve(event.data);
+      target.postMessage(request);
+    });
+  }
+
+  async function startWorker() {
+    const created = new Worker(new URL('./skeleton.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    const answer = await ask(created, { type: 'load', model });
+    if (answer.type === 'error') throw new Error(answer.message);
+    return created;
+  }
 
   async function run(job: SkeletonJob) {
-    const landmarker = await loadLandmarker();
+    worker ??= startWorker();
+    const target = await worker;
     const start = job.samples.findIndex((sample) => sample.time >= job.first.startMs);
     const split = start === -1 ? 0 : start;
     const passes = [job.samples.slice(split), job.samples.slice(0, split).reverse()];
     let done = 0;
     for (const pass of passes) {
-      let next: ReturnType<typeof createTracker> | null = null;
+      let restart = true;
       for (const sample of pass) {
         await unpaused;
         if (job.isCancelled()) return;
@@ -98,12 +86,17 @@ export function createSkeletonRefiner(loadLandmarker: () => Promise<PoseLandmark
           stage: 'compute',
           percent: Math.floor((done++ / job.samples.length) * 100),
         });
-        const frame = await createImageBitmap(await sample.image);
-        next ??= createTracker(frame.width, frame.height);
-        const pose = next(sample.tracked, (view) => detectView(landmarker, frame, view));
-        frame.close();
-        if (pose) job.onFrame({ time: sample.time, pose });
-        await yieldToPage();
+        const answer = await ask(target, {
+          type: 'frame',
+          image: await sample.image,
+          tracked: sample.tracked,
+          restart,
+        });
+        restart = false;
+        if (answer.type === 'error') throw new Error(answer.message);
+        if (answer.type === 'frame' && answer.pose) {
+          job.onFrame({ time: sample.time, pose: answer.pose });
+        }
       }
     }
     job.onProgress({ stage: 'compute', percent: 100 });
