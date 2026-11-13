@@ -111,6 +111,10 @@ export default function Tablet() {
     };
   }, [runUp, camera, detector, editingZone, recording]);
 
+  function updateAspectRatio({ videoWidth, videoHeight }: HTMLVideoElement) {
+    if (videoWidth && videoHeight) setAspectRatio(videoWidth / videoHeight);
+  }
+
   async function finishRecording(time: number) {
     const active = activeRef.current;
     if (!active) return;
@@ -311,10 +315,9 @@ export default function Tablet() {
             className="absolute inset-0 h-full w-full"
             muted
             playsInline
-            onLoadedMetadata={(event) => {
-              const { videoWidth, videoHeight } = event.currentTarget;
-              if (videoWidth && videoHeight) setAspectRatio(videoWidth / videoHeight);
-            }}
+            onLoadedMetadata={(event) => updateAspectRatio(event.currentTarget)}
+            // Turning the phone swaps the camera picture between portrait and landscape.
+            onResize={(event) => updateAspectRatio(event.currentTarget)}
           />
           <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
           {editingZone && (
