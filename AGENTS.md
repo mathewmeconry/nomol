@@ -69,7 +69,12 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   (`<html class="dark">`); controls over the video use the `floating` style in `Tablet.tsx`.
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
-  people per frame, run once per camera frame (`requestVideoFrameCallback`). WASM and model load
+  people per frame, in a worker (`pose.worker.ts`): each camera frame
+  (`requestVideoFrameCallback`) goes there as a `VideoFrame` and comes back with the poses, so recording saves exactly the
+  detected picture; the newest frame arriving meanwhile is detected next. On the page, detection
+  blocked drawing (on a warm phone 100–250 ms per frame, the replay stuttered constantly); an
+  `ImageBitmap` copy of the video cost a third of the detections on a Pixel 8. MediaPipe's
+  `importScripts` is shimmed for module workers (`landmarker.client.ts`). WASM and model load
   from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 100 ms per frame
   (median over 3 s of detection, checked again and again since phones slow down as they heat
   up), the lite model takes over. MediaPipe drives
@@ -98,6 +103,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
 - `app/lib/detection/`: pure, tested logic. `session.ts` decides when recordings start and stop
   (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and floor line.
+  Also MediaPipe itself: `pose-detector.client.ts` (models, lite fallback) talking to
+  `pose.worker.ts`.
 - `app/components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
   and finishes recordings, switches between live picture and replay.
 - `app/components/LiveControls.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the bar over the live
@@ -164,7 +171,10 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   frame at first; after ~45 minutes of camera and models it ran hot (thermal status critical)
   and took 100–300 ms. While the RTMPose replay skeleton was computing (~1.3 s per frame there),
   recordings dropped from ~43 to ~25 fps with gaps up to 0.25 s and live detection slowed by a
-  third; busy CPU threads alone barely mattered. Automatic mode's two pre-roll recorders cost
+  third; busy CPU threads alone barely mattered. With MediaPipe on the page, the replay skeleton
+  (MediaPipe on turned frames) took 0.35–0.5 s per frame and the page dropped every frame for
+  whole recordings; with both in workers (camera pointed at a screen looping a gym video,
+  thermal status severe) under 1 s in 15 s of a recording drew slower than 50 ms. Automatic mode's two pre-roll recorders cost
   another ~40 % of the detection rate. In the dark the camera delivers only ~14 fps.
 - Start sign from far away: further than ~half the picture height, MediaPipe heavy rates crossed
   wrists at 0.1–0.5 visibility although their positions are right (phone frames shrunk to ½, ⅓

@@ -58,33 +58,28 @@ export function beginRecording(
 }
 
 /** The tracked person's pose, and every `SAMPLE_EVERY_MS` the frame for the skeleton. */
-export function recordPose(
-  active: ActiveRecording,
-  video: HTMLVideoElement,
-  time: number,
-  pose: Pose,
-) {
+export function recordPose(active: ActiveRecording, frame: VideoFrame, time: number, pose: Pose) {
   const now = time - active.startedAt;
   active.frames.push({ time: now, pose });
   const last = active.samples.at(-1);
   if (last && now - last.time < SAMPLE_EVERY_MS) return;
-  active.samples.push({ time: now, image: captureFrame(video), tracked: pose });
+  active.samples.push({ time: now, image: captureFrame(frame), tracked: pose });
 }
 
-export function recordStill(active: ActiveRecording, video: HTMLVideoElement, time: number) {
+export function recordStill(active: ActiveRecording, frame: VideoFrame, time: number) {
   const last = active.stills.at(-1);
   if (last && time - active.startedAt - last.time < STILL_EVERY_MS) return;
   thumbnailCanvas ??= document.createElement('canvas');
   active.stills.push({
     time: time - active.startedAt,
-    url: captureThumbnail(video, thumbnailCanvas),
+    url: captureThumbnail(frame, thumbnailCanvas),
   });
 }
 
 /** While waiting for an automatic start: what was seen, and frames when someone is there. */
 export function rememberFrame(
   seen: Seen[],
-  video: HTMLVideoElement,
+  videoFrame: VideoFrame,
   time: number,
   poses: Pose[],
 ): Seen[] {
@@ -92,7 +87,7 @@ export function rememberFrame(
   const lastImage = kept.filter((frame) => frame.image).at(-1);
   const image =
     poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
-      ? captureFrame(video)
+      ? captureFrame(videoFrame)
       : null;
   return [...kept, { time, poses, image }];
 }

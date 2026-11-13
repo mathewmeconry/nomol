@@ -27,14 +27,14 @@ export type SkeletonJob = {
   isCancelled: () => boolean;
 };
 
-/** The current video frame at `FRAME_SIZE`, as JPEG to keep long recordings small in memory. */
-export function captureFrame(video: HTMLVideoElement): Promise<Blob> {
-  const scale = Math.min(1, FRAME_SIZE / Math.max(video.videoWidth, video.videoHeight));
+/** A camera frame at `FRAME_SIZE`, as JPEG to keep long recordings small in memory. */
+export function captureFrame(frame: VideoFrame): Promise<Blob> {
+  const scale = Math.min(1, FRAME_SIZE / Math.max(frame.displayWidth, frame.displayHeight));
   const canvas = new OffscreenCanvas(
-    Math.round(video.videoWidth * scale),
-    Math.round(video.videoHeight * scale),
+    Math.round(frame.displayWidth * scale),
+    Math.round(frame.displayHeight * scale),
   );
-  canvas.getContext('2d')!.drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.getContext('2d')!.drawImage(frame, 0, 0, canvas.width, canvas.height);
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
 

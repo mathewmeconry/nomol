@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import type { PoseLandmarker } from '@mediapipe/tasks-vision';
-import { createLandmarker } from '~/lib/detection/pose-detector.client';
+import { createLandmarker } from '~/lib/detection/landmarker.client';
 import type { Pose } from '~/lib/detection/pose';
 import { createTracker, fromView, type View } from './rotation';
 
@@ -21,17 +21,6 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   { type: 'ready' } | { type: 'frame'; pose: Pose | null } | { type: 'error'; message: string };
-
-// MediaPipe loads its WASM glue with importScripts, which module workers don't allow. A
-// synchronous fetch evaluated in global scope does the same.
-self.importScripts = (...urls: (string | URL)[]) => {
-  for (const url of urls) {
-    const request = new XMLHttpRequest();
-    request.open('GET', url.toString(), false);
-    request.send();
-    (0, eval)(request.responseText);
-  }
-};
 
 let landmarker: PoseLandmarker | null = null;
 let next: ReturnType<typeof createTracker> | null = null;

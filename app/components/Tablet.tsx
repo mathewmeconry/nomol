@@ -135,11 +135,12 @@ export default function Tablet() {
   }
 
   /**
+   * @param frame the camera frame the poses were detected in
    * @param time when the camera captured the frame
    * @param deliveredAt when the frame reached the page, before detection ran on it
    */
   const onFrame = useEffectEvent(
-    (video: HTMLVideoElement, time: number, deliveredAt: number, poses: Pose[]) => {
+    (frame: VideoFrame, time: number, deliveredAt: number, poses: Pose[]) => {
       lastFrameTimeRef.current = time;
       const result = step(sessionRef.current, {
         time,
@@ -173,12 +174,12 @@ export default function Tablet() {
         playStartSound();
         setArmedAt(null);
       } else if (prerollRef.current) {
-        seenRef.current = rememberFrame(seenRef.current, video, time, poses);
+        seenRef.current = rememberFrame(seenRef.current, frame, time, poses);
       }
       const active = activeRef.current;
       if (active) {
-        if (result.target) recordPose(active, video, time, result.target);
-        recordStill(active, video, time);
+        if (result.target) recordPose(active, frame, time, result.target);
+        recordStill(active, frame, time);
       }
       if (result.event?.type === 'stop') void finishRecording(time);
 
@@ -219,29 +220,55 @@ export default function Tablet() {
     const video = videoRef.current;
     const overlay = overlayRef.current;
     if (!video) return;
+    type Waiting = { frame: VideoFrame; time: number; deliveredAt: number };
     let handle = 0;
     let lastTime = -Infinity;
+    let busy = false;
+    let stopped = false;
+    /** The newest frame that arrived during a detection, detected right after it. */
+    let waiting: Waiting | null = null;
+
+    function detect({ frame, time, deliveredAt }: Waiting) {
+      busy = true;
+      running
+        .detect(frame, time)
+        .then(({ frame: detected, poses }) => {
+          if (!stopped) onFrame(detected, time, deliveredAt, poses);
+          detected.close();
+        })
+        .catch((_error: unknown) => {
+          // MediaPipe needs WebGL even on the CPU; without it every frame fails.
+          if (!stopped) onDetectionFailed();
+          stopped = true;
+          video!.cancelVideoFrameCallback(handle);
+        })
+        .finally(() => {
+          busy = false;
+          const next = waiting;
+          waiting = null;
+          if (next && !stopped) detect(next);
+          else next?.frame.close();
+        });
+    }
+
     // Runs once per new camera frame. Frames are timed by when the camera captured them, not
     // when detection gets to them, so the replay skeleton lines up with the recorded video.
     function onVideoFrame(deliveredAt: number, metadata: VideoFrameCallbackMetadata) {
+      handle = video!.requestVideoFrameCallback(onVideoFrame);
       const time = metadata.captureTime ?? metadata.presentationTime;
       // MediaPipe requires strictly increasing timestamps.
-      if (time > lastTime) {
-        lastTime = time;
-        let poses: Pose[];
-        try {
-          poses = running.detect(video!, time);
-        } catch (_error) {
-          // MediaPipe needs WebGL even on the CPU; without it every frame fails.
-          onDetectionFailed();
-          return;
-        }
-        onFrame(video!, time, deliveredAt, poses);
-      }
-      handle = video!.requestVideoFrameCallback(onVideoFrame);
+      if (time <= lastTime) return;
+      lastTime = time;
+      const frame = { frame: new VideoFrame(video!), time, deliveredAt };
+      if (!busy) return detect(frame);
+      waiting?.frame.close();
+      waiting = frame;
     }
     handle = video.requestVideoFrameCallback(onVideoFrame);
     return () => {
+      stopped = true;
+      waiting?.frame.close();
+      waiting = null;
       video.cancelVideoFrameCallback(handle);
       // Stopping only happens outside a recording (the zone button is disabled during one), so
       // a half-held sign can be dropped, and the last boxes would otherwise stay on screen.

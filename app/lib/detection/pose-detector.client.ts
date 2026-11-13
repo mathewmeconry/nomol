@@ -1,10 +1,7 @@
-import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 import { download } from '~/lib/download';
 import type { Pose } from './pose';
+import type { DetectRequest, DetectResponse } from './pose.worker';
 
-// Loaded from the network for now; bundle these for halls without internet.
-// The WASM version must match the installed @mediapipe/tasks-vision.
-const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2/wasm';
 const modelUrl = (size: 'heavy' | 'lite') =>
   `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${size}/float16/latest/pose_landmarker_${size}.task`;
 
@@ -22,65 +19,73 @@ const SLOW_MS = 100;
  */
 const MEASURE_MS = 3000;
 
-/** Spotters and waiting gymnasts are often in the picture too. */
-const MAX_POSES = 4;
-
 export type PoseDetector = {
-  detect: (video: HTMLVideoElement, timeMs: number) => Pose[];
+  /**
+   * Poses in a camera frame. The frame is handed to the worker (a VideoFrame moves without
+   * copying the picture) and comes back with the poses, e.g. to record it; the caller closes it.
+   */
+  detect: (frame: VideoFrame, timeMs: number) => Promise<{ frame: VideoFrame; poses: Pose[] }>;
   /** The heavy model, for the replay skeleton: heavy even when live detection fell back to lite. */
   heavyModel: Uint8Array;
   close: () => void;
 };
 
-/** Also used in the replay skeleton's worker. */
-export async function createLandmarker(model: Uint8Array, runningMode: 'VIDEO' | 'IMAGE') {
-  const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-  const options = (delegate: 'GPU' | 'CPU') =>
-    PoseLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetBuffer: model, delegate },
-      runningMode,
-      numPoses: MAX_POSES,
-    });
-  // The GPU delegate is much faster but can fail to start on some devices. Note that MediaPipe
-  // still needs WebGL to read video frames, so the CPU fallback doesn't help without it.
-  return options('GPU').catch((_error: unknown) => options('CPU'));
-}
-
-/** @param onProgress download progress of the model in percent, the bulk of the startup time */
+/**
+ * MediaPipe runs in a worker (see `landmarker.client.ts`).
+ *
+ * @param onProgress download progress of the model in percent, the bulk of the startup time
+ */
 export async function createPoseDetector(
   onProgress?: (percent: number) => void,
 ): Promise<PoseDetector> {
   const heavyModel = await download(modelUrl('heavy'), onProgress);
-  let landmarker = await createLandmarker(heavyModel, 'VIDEO');
+  const worker = new Worker(new URL('./pose.worker.ts', import.meta.url), { type: 'module' });
+  const pending = new Map<number, (response: DetectResponse) => void>();
+  let nextId = 0;
+  worker.onmessage = (event: MessageEvent<DetectResponse>) => {
+    pending.get(event.data.id)?.(event.data);
+    pending.delete(event.data.id);
+  };
+  function ask(request: DetectRequest, transfer: Transferable[] = []) {
+    return new Promise<DetectResponse>((resolve, reject) => {
+      pending.set(request.id, (response) =>
+        response.type === 'error' ? reject(new Error(response.message)) : resolve(response),
+      );
+      worker.postMessage(request, transfer);
+    });
+  }
+
+  // Copied, not transferred: the replay skeleton needs it too.
+  await ask({ id: nextId++, type: 'load', model: heavyModel }).catch((error: unknown) => {
+    worker.terminate();
+    throw error;
+  });
   let timings: number[] = [];
   let measuring = true;
 
+  function measure(ms: number) {
+    if (!measuring) return;
+    timings.push(ms);
+    if (timings.reduce((sum, value) => sum + value, 0) < MEASURE_MS) return;
+    const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
+    timings = [];
+    if (median <= SLOW_MS) return;
+    measuring = false;
+    void download(modelUrl('lite'))
+      .then((lite) => ask({ id: nextId++, type: 'load', model: lite }, [lite.buffer]))
+      .catch(() => {}); // stays on heavy
+  }
+
   return {
-    detect(video, timeMs) {
-      const start = performance.now();
-      const poses = landmarker.detectForVideo(video, timeMs).landmarks;
-      if (measuring) {
-        timings.push(performance.now() - start);
-        if (timings.reduce((sum, ms) => sum + ms, 0) >= MEASURE_MS) {
-          const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
-          timings = [];
-          if (median > SLOW_MS) {
-            measuring = false;
-            // Swapped between frames: detection is synchronous, so no frame sees a closed model.
-            void download(modelUrl('lite'))
-              .then((lite) => createLandmarker(lite, 'VIDEO'))
-              .then((lite) => {
-                landmarker.close();
-                landmarker = lite;
-              });
-          }
-        }
-      }
-      return poses;
+    async detect(frame, timeMs) {
+      const response = await ask({ id: nextId++, type: 'detect', frame, time: timeMs }, [frame]);
+      if (response.type !== 'poses') throw new Error(`unexpected ${response.type}`);
+      measure(response.ms);
+      return { frame: response.frame, poses: response.poses };
     },
     heavyModel,
     close() {
-      landmarker.close();
+      worker.terminate();
     },
   };
 }
