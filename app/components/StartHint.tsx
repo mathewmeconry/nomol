@@ -19,7 +19,9 @@ export default function StartHint({
       {runUp ? (
         <>
           <p className="text-lg font-semibold">
-            Automatisch: Anlauf von {runUp === 'left' ? 'links' : 'rechts'} startet die Aufnahme
+            {runUp === 'any'
+              ? 'Automatisch: Tempo in der Startzone startet die Aufnahme'
+              : `Automatisch: Anlauf von ${runUp === 'left' ? 'links' : 'rechts'} startet die Aufnahme`}
           </p>
           <p className="text-sm text-slate-400">
             Startzone über Gerät und Landung · endet beim Weggehen

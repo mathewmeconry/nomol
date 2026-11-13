@@ -9,6 +9,7 @@ import {
 } from '~/components/ui/select';
 import { Toggle } from '~/components/ui/toggle';
 import type { RunUp } from '~/lib/detection/session';
+import { runUpSchema } from '~/lib/zone-storage';
 import { cn } from 'cn';
 
 export type Status = 'idle' | 'sign' | 'armed' | 'recording';
@@ -31,6 +32,7 @@ const START_MODES = [
   { value: 'sign', label: 'Start mit Zeichen' },
   { value: 'left', label: 'Auto von links' },
   { value: 'right', label: 'Auto von rechts' },
+  { value: 'any', label: 'Auto bei Tempo' },
 ] as const;
 
 /** Controls float over the camera image, so they get a dark, blurred backing. */
@@ -90,7 +92,7 @@ export default function LiveControls({
         <Select
           value={runUp ?? 'sign'}
           disabled={recording}
-          onValueChange={(value) => onRunUp(value === 'left' || value === 'right' ? value : null)}
+          onValueChange={(value) => onRunUp(runUpSchema.safeParse(value).data ?? null)}
         >
           <SelectTrigger
             size="sm"

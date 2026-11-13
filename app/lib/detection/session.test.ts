@@ -2,6 +2,7 @@ import { makePose } from '~/tests/poses';
 import { LM, type Pose } from './pose';
 import {
   IDLE_MS,
+  LOST_IN_ELEMENT_MS,
   LOST_MS,
   SIGN_HOLD_MS,
   initialSession,
@@ -180,6 +181,39 @@ describe('starting automatically', () => {
     }
   });
 
+  it('starts on anyone fast enough in any direction when set to', () => {
+    // Swinging on the rings, through the zone: up to ~8 torso lengths per second.
+    const swing: Scene = (t) => [
+      makePose({ x: 0.45 + 0.3 * Math.sin(t / 400), feetY: 0.9, lift: 0.3 }),
+    ];
+    for (const scene of [moving(0, 0.5), moving(1, -0.5), swing]) {
+      for (const fps of [6, 30]) {
+        const { events } = run(scene, 3000, { runUp: 'any', fps });
+        expect(events[0]?.event).toMatchObject({ type: 'start', reason: 'runUp' });
+      }
+    }
+  });
+
+  it('ignores someone walking through in any direction', () => {
+    // 0.2 per second is ~2.2 torso lengths per second.
+    expect(run(moving(0, 0.2), 8000, { runUp: 'any' }).events).toEqual([]);
+    expect(run(moving(1, -0.2), 8000, { runUp: 'any' }).events).toEqual([]);
+  });
+
+  it('ignores people waiting in a row, detected in turn', () => {
+    // From the rings: one of them missing in each frame, so the nearest sighting before hops
+    // along the row.
+    const row = [0.32, 0.41, 0.5, 0.59];
+    for (const fps of [4, 6, 10]) {
+      let frame = 0;
+      const inTurn: Scene = () => {
+        const missing = frame++ % row.length;
+        return row.filter((_x, i) => i !== missing).map((x) => makePose({ x, feetY: 0.9 }));
+      };
+      expect(run(inTurn, LONG, { runUp: 'any', fps }).events).toEqual([]);
+    }
+  });
+
   it('only starts by itself when switched on', () => {
     expect(run(moving(0, 0.5), 2000).events).toEqual([]);
   });
@@ -191,7 +225,8 @@ describe('starting automatically', () => {
       time,
       poses: [bystander, runner(time)],
     }));
-    const found = traceBack(earlier, runner(500), 500, 1, 'left');
+    const start = runner(500);
+    const found = traceBack(earlier, start, [bystander, start], 500, 1, 'left');
     expect(found.map((frame) => frame.time)).toEqual([0, 100, 200, 300, 400]);
     expect(found.every((frame, i) => frame.pose === earlier[i].poses[1])).toBe(true);
   });
@@ -211,7 +246,8 @@ describe('starting automatically', () => {
         time,
         poses: [squatting, runner(time)],
       }));
-      const found = traceBack(earlier, runner(500), 500, 1, 'left');
+      const start = runner(500);
+      const found = traceBack(earlier, start, [squatting, start], 500, 1, 'left');
       expect(found.map((frame) => frame.pose)).toEqual(earlier.map((frame) => frame.poses[1]));
     });
 
@@ -221,7 +257,8 @@ describe('starting automatically', () => {
         time,
         poses: time < 1000 ? [squatting] : [squatting, runner(time - 1000)],
       }));
-      const found = traceBack(earlier, runner(500), 1500, 1, 'left');
+      const start = runner(500);
+      const found = traceBack(earlier, start, [squatting, start], 1500, 1, 'left');
       expect(found.length).toBeGreaterThan(10);
       expect(found.every((frame) => frame.time >= 1000 && frame.pose !== squatting)).toBe(true);
     });
@@ -229,7 +266,7 @@ describe('starting automatically', () => {
     it('follows someone who started by sign or button back while they stood', () => {
       const standing = makePose({ x: 0.45, feetY: 0.9 });
       const earlier = [0, 100, 200].map((time) => ({ time, poses: [standing] }));
-      expect(traceBack(earlier, standing, 300, 1, null)).toHaveLength(3);
+      expect(traceBack(earlier, standing, [standing], 300, 1, null)).toHaveLength(3);
     });
   });
 });
@@ -419,6 +456,29 @@ describe('stopping', () => {
     const { events, state } = run(scene, 2000, { from: recording(0.45) });
     expect(events).toHaveLength(0);
     expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.45, 2);
+  });
+
+  it('keeps recording while a swing leaves the picture at the side and comes back', () => {
+    // From a rings video: in the air at the left edge, back 0.4 s later 0.26 further in.
+    const scene: Scene = (t) =>
+      t < 1000
+        ? [makePose({ x: 0.45 - (0.4 * t) / 1000, feetY: 0.9, lift: liftAt(t) })]
+        : t < 1400
+          ? []
+          : [makePose({ x: 0.31 + (0.3 * (t - 1400)) / 1000, feetY: 0.9, lift: 0.3 })];
+    const { events, state } = run(scene, 3000, { from: recording(0.45) });
+    expect(events).toEqual([]);
+    expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.79, 1);
+  });
+
+  it('waits longer for a gymnast last seen in the air', () => {
+    // Swings out of the picture after 1 s and isn't found again.
+    const scene: Scene = (t) =>
+      t < 1000 ? [makePose({ x: 0.45 - (0.4 * t) / 1000, feetY: 0.9, lift: liftAt(t) })] : [];
+    const { events } = run(scene, 6000, { from: recording(0.45) });
+    expect(events.map((e) => e.event)).toEqual([{ type: 'stop', reason: 'lost' }]);
+    // Last seen one frame before 1 s.
+    expect(events[0].time).toBeGreaterThan(950 + LOST_IN_ELEMENT_MS);
   });
 
   it('does not take someone who shows up where the gymnast left the picture', () => {

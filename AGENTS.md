@@ -17,12 +17,15 @@ Requirements, as agreed with the owner:
   starts when someone runs into the start zone from the run-up side. Walkers come from the other
   side and must not trigger it, nor people standing nearby. The trigger comes late (the run-up is
   usually outside the picture), so two staggered recorders run while waiting and the older one
-  becomes the clip: it starts 1.5–3 s before the trigger. Nothing else is kept.
+  becomes the clip: it starts 1.5–3 s before the trigger. Nothing else is kept. "Auto bei Tempo"
+  does the same for anyone faster than walking (≥ 4 torso lengths per second) in any direction,
+  for all apparatus: swinging on the rings, a run-up on the floor.
 - **Nothing is recorded without a sign, button press or automatic start.**
 - **Following:** only the person who started is tracked; others in the picture are ignored and
   get no boxes.
 - **Stopping:** when the recorded gymnast shows the start sign (held ~1 s, anywhere in the
-  picture), leaves the picture, or after ~6 s of only standing or walking
+  picture), leaves the picture (1.5 s unseen; 3 s if last seen in an element, since a swing on the
+  rings leaves the picture and comes back), or after ~6 s of only standing or walking
   (both feet on the floor or a landing mat) since their last element. Waiting before the routine
   and short breaks between elements must not stop it. An element is anything but both feet on the
   floor; hands don't count as feet (handstand, support on the Reck, balancing on one leg). A sign
@@ -32,7 +35,8 @@ Requirements, as agreed with the owner:
   last one (`routineRange`), cutting the wait and the walk-away. The full video is kept, exported
   and can still be scrubbed.
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
-  floor line used for the stop rule and trimming; it must be where the feet are.
+  floor line used for the stop rule and trimming; it must be where the feet are. Detection only
+  looks at the zone and around it (`detectionArea`, see Stack).
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
   Chrome on Android usually lists only front and back; there a "Weitwinkel (0,5×)" switch reaches
   the ultra-wide lens if the phone allows zooming below 1×.
@@ -83,7 +87,12 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 100 ms per frame
   (median over 3 s of detection, checked again and again since phones slow down as they heat
   up), the lite model takes over. MediaPipe drives
-  everything live (sign, tracking, stop, trimming).
+  everything live (sign, tracking, stop, trimming). It only gets part of each frame
+  (`detectionArea`): the start zone plus a quarter of its size on each side, widened to a square,
+  and while recording also wherever the gymnast has been (`coverPose`). MediaPipe shrinks its
+  input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
+  pixels tall. The crop is a `visibleRect` view of the `VideoFrame` (no copy; gives the same
+  poses as a canvas crop), mapped back to whole-frame coordinates in the worker.
 - Replay skeleton (`app/lib/skeleton/`): MediaPipe heavy again, as a second landmarker in IMAGE
   mode on the already loaded model, in a worker (`skeleton.worker.ts`; on the page it blocked
   the replay up to ~0.5 s per frame, sometimes 1.4 s, on a Pixel 8). While recording, the
@@ -183,6 +192,20 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   pre-roll by nearest skeleton put the girl by the springboard into every frame of the wait (29
   at 30 detections per second) and the replay showed her; following the same trail as the start
   (gaps filled with the skeleton nearest the path) took 0–1 such frames at 3–30 per second.
+- Rings (November 2026: 13 exports and three phone videos, a busy hall, MediaPipe on frames at
+  10 per second): a gymnast at the back of the hall (torso ~0.08 image heights) showing the sign
+  was found in 64 of 89 frames of the whole picture, in 88 cropped around the start zone. The
+  swinging gymnast is often not found while blurred at the bottom of the swing, even cropped,
+  and a swing left the picture at the side for up to 1.2 s; the walk-out rule at the side
+  (`SIDE_TORSOS`) then refused him 0.26 further in and the recording stopped mid-swing.
+  Walking measured ~2–2.5 torso lengths per second, swinging and running 5–12; "Auto bei Tempo"
+  at 3 started on someone walking past, at 4 not. Its trail in any direction hopped between
+  people waiting in a row, each detected in turn, and 0.8 s back across the picture; such
+  sightings are refused when someone of the same size is still at the earlier spot or was
+  already at the later one (`hopped`). On the five Sprung traces (every frame offset at 4–30
+  detections per second) this cost left/right 3 of 125 starts, all at ≤ 10 per second, and
+  mirrored false starts went from 29 to 26. "Auto bei Tempo" there starts reliably only from
+  10 per second: part of a Sprung run-up comes towards the camera.
 - Phone load, Pixel 8 (measured over adb, `chrome://inspect`): MediaPipe heavy took 25 ms per
   frame at first; after ~45 minutes of camera and models it ran hot (thermal status critical)
   and took 100–300 ms. While the RTMPose replay skeleton was computing (~1.3 s per frame there),
@@ -203,7 +226,7 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
 
 `{ version, appVersion, startedAt, durationMs, aspectRatio, zone, startReason, runUp, userAgent,
 frames, skeleton }`. `appVersion` is the commit that recorded the clip, `startReason` `sign`,
-`button` or `runUp`, `runUp` the automatic start setting (`left`, `right` or null); all three are
+`button` or `runUp`, `runUp` the automatic start setting (`left`, `right`, `any` or null); all three are
 null for clips recorded before version 3. `frames`
 are the tracked person's 33 MediaPipe landmarks (`x`, `y` normalized to the image, `visibility`)
 with `time` in ms relative to the video's start; times can be slightly negative. Only frames

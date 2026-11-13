@@ -32,9 +32,11 @@ export function saveZone(zone: Zone) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(zone));
 }
 
+export const runUpSchema = z.enum(['left', 'right', 'any']);
+
 /** Automatic start belongs to the apparatus the device is set up at, like the zone. */
 export function loadRunUp(): RunUp | null {
-  const result = z.enum(['left', 'right']).safeParse(localStorage.getItem(RUN_UP_KEY));
+  const result = runUpSchema.safeParse(localStorage.getItem(RUN_UP_KEY));
   return result.success ? result.data : null;
 }
 

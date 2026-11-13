@@ -1,6 +1,7 @@
 import { download } from '~/lib/download';
 import type { Pose } from './pose';
 import type { DetectRequest, DetectResponse } from './pose.worker';
+import type { Zone } from './zone';
 
 const modelUrl = (size: 'heavy' | 'lite') =>
   `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${size}/float16/latest/pose_landmarker_${size}.task`;
@@ -21,10 +22,15 @@ const MEASURE_MS = 3000;
 
 export type PoseDetector = {
   /**
-   * Poses in a camera frame. The frame is handed to the worker (a VideoFrame moves without
-   * copying the picture) and comes back with the poses, e.g. to record it; the caller closes it.
+   * Poses in a camera frame, looking only at `area` (see `detectionArea`). The frame is handed
+   * to the worker (a VideoFrame moves without copying the picture) and comes back with the
+   * poses, e.g. to record it; the caller closes it.
    */
-  detect: (frame: VideoFrame, timeMs: number) => Promise<{ frame: VideoFrame; poses: Pose[] }>;
+  detect: (
+    frame: VideoFrame,
+    timeMs: number,
+    area: Zone,
+  ) => Promise<{ frame: VideoFrame; poses: Pose[] }>;
   /** The heavy model, for the replay skeleton: heavy even when live detection fell back to lite. */
   heavyModel: Uint8Array;
   close: () => void;
@@ -77,8 +83,10 @@ export async function createPoseDetector(
   }
 
   return {
-    async detect(frame, timeMs) {
-      const response = await ask({ id: nextId++, type: 'detect', frame, time: timeMs }, [frame]);
+    async detect(frame, timeMs, area) {
+      const response = await ask({ id: nextId++, type: 'detect', frame, time: timeMs, area }, [
+        frame,
+      ]);
       if (response.type !== 'poses') throw new Error(`unexpected ${response.type}`);
       measure(response.ms);
       return { frame: response.frame, poses: response.poses };

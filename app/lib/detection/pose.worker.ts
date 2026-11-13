@@ -2,10 +2,12 @@
 import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import { createLandmarker } from './landmarker.client';
 import type { Pose } from './pose';
+import type { Zone } from './zone';
 
 export type DetectRequest =
   | { id: number; type: 'load'; model: Uint8Array }
-  | { id: number; type: 'detect'; frame: VideoFrame; time: number };
+  /** `area`: the part of the frame to detect in (`detectionArea`), normalized. */
+  | { id: number; type: 'detect'; frame: VideoFrame; time: number; area: Zone };
 
 export type DetectResponse =
   | { id: number; type: 'ready' }
@@ -17,6 +19,37 @@ let landmarker: PoseLandmarker | null = null;
 
 function reply(message: DetectResponse, transfer: Transferable[] = []) {
   self.postMessage(message, transfer);
+}
+
+/**
+ * Poses in part of the frame, in coordinates of the whole frame. The crop is a view of the same
+ * picture (`visibleRect`), not a copy.
+ */
+function detectIn(landmarker: PoseLandmarker, frame: VideoFrame, area: Zone, time: number) {
+  const visible = frame.visibleRect!;
+  // Planar formats such as NV12 need even offsets and sizes.
+  const even = (value: number) => 2 * Math.floor(value / 2);
+  const x = even(area.left * visible.width);
+  const y = even(area.top * visible.height);
+  const width = Math.min(even((area.right - area.left) * visible.width), visible.width - x);
+  const height = Math.min(even((area.bottom - area.top) * visible.height), visible.height - y);
+  if (width >= visible.width && height >= visible.height) {
+    return landmarker.detectForVideo(frame, time).landmarks;
+  }
+  const view = new VideoFrame(frame, {
+    visibleRect: { x: visible.x + x, y: visible.y + y, width, height },
+  });
+  try {
+    return landmarker.detectForVideo(view, time).landmarks.map((pose) =>
+      pose.map((landmark) => ({
+        ...landmark,
+        x: (x + landmark.x * width) / visible.width,
+        y: (y + landmark.y * height) / visible.height,
+      })),
+    );
+  } finally {
+    view.close();
+  }
 }
 
 self.onmessage = async (event: MessageEvent<DetectRequest>) => {
@@ -32,7 +65,7 @@ self.onmessage = async (event: MessageEvent<DetectRequest>) => {
       return;
     }
     const start = performance.now();
-    const poses = landmarker!.detectForVideo(request.frame, request.time).landmarks;
+    const poses = detectIn(landmarker!, request.frame, request.area, request.time);
     const ms = performance.now() - start;
     reply({ id: request.id, type: 'poses', frame: request.frame, poses, ms }, [request.frame]);
   } catch (error) {

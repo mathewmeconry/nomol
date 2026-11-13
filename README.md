@@ -43,7 +43,11 @@ points per frame, start zone, aspect ratio).
    and the replay loops just the routine.
 4. For apparatus like Sprung, pick **Auto von links/rechts** (the side the run-up comes from) and
    draw the start zone over the apparatus and the landing. Each run-in starts a recording by
-   itself, including the 1.5–3 s before it was recognised.
+   itself, including the 1.5–3 s before it was recognised. **Auto bei Tempo** starts on anyone
+   faster than walking in any direction, e.g. swinging on the rings or running up on the floor.
+5. Detection looks only at the start zone and around it (and wherever the recorded gymnast
+   goes), which finds people far from the camera. Draw the zone over everything a gymnast
+   should be found in before the start.
 
 ## Scripts
 
