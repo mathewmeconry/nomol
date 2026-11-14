@@ -41,25 +41,40 @@ export function scaleZone(zone: Zone, aspectRatio: number): Zone {
   return { ...zone, left: zone.left * aspectRatio, right: zone.right * aspectRatio };
 }
 
-/** Share of the start zone's width and height added on each side of it for detection. */
-const AREA_MARGIN = 0.25;
+/**
+ * Share of the start zone's width and height added on each side of it for detection while
+ * waiting for an automatic start, where the runner comes from.
+ */
+const RUN_UP_MARGIN = 0.25;
 
 /**
- * The part of the picture detection looks at: the start zone with a margin and `include` (where
- * the recorded gymnast has been), widened to a square. MediaPipe shrinks whatever it gets to a
- * 256 px square, so on a 16:9 picture someone far away was only a few pixels tall: on the rings,
- * a gymnast showing the sign at the back of the hall was found in 64 of 89 frames, cropped to
- * his zone in 88. A narrower area only adds letterboxing, hence the square.
+ * The part of the picture detection looks at, widened to a square. MediaPipe shrinks whatever
+ * it gets to a 256 px square, so on a 16:9 picture someone far away was only a few pixels tall:
+ * on the rings, a gymnast showing the sign at the back of the hall was found in 64 of 89 frames,
+ * cropped to his zone in 88. A narrower area only adds letterboxing, hence the square.
+ *
+ * Waiting, the start zone (with a margin for an automatic start, `runUp`); recording, only
+ * around the gymnast (`gymnast`, see `coverPose`). On the floor at the back of the hall with
+ * the wide lens (gymnasts ~0.15 image heights tall, 9 clips, 5 frames per second), MediaPipe
+ * found people in the zone 459 times given the zone, 94 times with the margin; while
+ * recording, the zone plus everywhere the gymnast had been grew to the whole picture height
+ * within seconds and lost them.
  */
-export function detectionArea(zone: Zone, aspectRatio: number, include: Zone | null): Zone {
-  const marginX = (zone.right - zone.left) * AREA_MARGIN;
-  const marginY = (zone.bottom - zone.top) * AREA_MARGIN;
+export function detectionArea(
+  zone: Zone,
+  aspectRatio: number,
+  gymnast: Zone | null,
+  runUp: boolean,
+): Zone {
+  const margin = runUp ? RUN_UP_MARGIN : 0;
+  const marginX = (zone.right - zone.left) * margin;
+  const marginY = (zone.bottom - zone.top) * margin;
   const box = scaleZone(
-    {
-      left: Math.min(zone.left - marginX, include?.left ?? 1),
-      top: Math.min(zone.top - marginY, include?.top ?? 1),
-      right: Math.max(zone.right + marginX, include?.right ?? 0),
-      bottom: Math.max(zone.bottom + marginY, include?.bottom ?? 0),
+    gymnast ?? {
+      left: zone.left - marginX,
+      top: zone.top - marginY,
+      right: zone.right + marginX,
+      bottom: zone.bottom + marginY,
     },
     aspectRatio,
   );
@@ -76,18 +91,19 @@ export function detectionArea(zone: Zone, aspectRatio: number, include: Zone | n
 }
 
 /**
- * `area` grown to cover `pose` and its own size around it on every side, so detection keeps
- * finding a gymnast moving away from the start zone: going into a salto the torso moved 0.32
- * between two frames.
+ * `pose` and its own size around it on every side, where detection looks for the gymnast in the
+ * next frame: going into a salto the torso moved 0.32 between two frames. In all 161 clips of a
+ * day in the hall (Sprung, floor, rings), the next sighting's torso was outside this in 28 of
+ * 11 232 steps.
  */
-export function coverPose(area: Zone | null, pose: Pose): Zone {
+export function coverPose(pose: Pose): Zone {
   const box = boundingBox(pose);
   const room = Math.max(box.right - box.left, box.bottom - box.top);
   return {
-    left: Math.min(box.left - room, area?.left ?? 1),
-    top: Math.min(box.top - room, area?.top ?? 1),
-    right: Math.max(box.right + room, area?.right ?? 0),
-    bottom: Math.max(box.bottom + room, area?.bottom ?? 0),
+    left: box.left - room,
+    top: box.top - room,
+    right: box.right + room,
+    bottom: box.bottom + room,
   };
 }
 

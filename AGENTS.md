@@ -26,7 +26,10 @@ Requirements, as agreed with the owner:
 - **Stopping:** when the recorded gymnast shows the start sign (held ~1 s, anywhere in the
   picture), leaves the picture (1.5 s unseen; 3 s if last seen in an element, since a swing on the
   rings leaves the picture and comes back), or after ~6 s of only standing or walking
-  (both feet on the floor or a landing mat) since their last element. Waiting before the routine
+  (both feet on the floor or a landing mat) since their last element; with "Auto von
+  links/rechts" (Sprung: one jump, and the next gymnast follows quickly) after 2.5 s. An
+  automatic start counts as an element, so someone who set it off and then only stands stops it
+  too. Waiting before the routine (sign or button start)
   and short breaks between elements must not stop it. An element is anything but both feet on the
   floor; hands don't count as feet (handstand, support on the Reck, balancing on one leg). A sign
   that just started or ended a recording must be released before it counts again. "Aufnahme
@@ -35,8 +38,11 @@ Requirements, as agreed with the owner:
   last one (`routineRange`), cutting the wait and the walk-away. The full video is kept, exported
   and can still be scrubbed.
 - **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
-  floor line used for the stop rule and trimming; it must be where the feet are. Detection only
-  looks at the zone and around it (`detectionArea`, see Stack).
+  floor line used for the stop rule and trimming; it must be where the feet are, i.e. where
+  people stand after the element: at Sprung on the landing mat or behind it, not the mat's front
+  edge (drawn there, nobody ever counted as standing and the next gymnast landed in the same
+  clip). Detection only looks at the zone (with a margin for an automatic start) and, while
+  recording, around the gymnast (`detectionArea`, see Stack).
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
   Chrome on Android usually lists only front and back; there a "Weitwinkel (0,5×)" switch reaches
   the ultra-wide lens if the phone allows zooming below 1×.
@@ -44,9 +50,11 @@ Requirements, as agreed with the owner:
   beep on/off, deleting all recordings (two taps), and the version (commit) and build time, to
   tell whether an update loaded.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
-  next gymnast; the small live picture sits among the controls when they're docked (see Screen
-  space), otherwise over the replay where it can be dragged anywhere; a tap on it goes live. The
-  timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
+  next gymnast. While a replay is on screen, a newer clip waits until it has been shown 60 s
+  (whatever its length), plays, and nobody touched the screen for 10 s (Android so far). The
+  small live picture sits among the controls when they're docked (see Screen space), otherwise
+  over the replay where it can be dragged anywhere; a tap on it goes live. A tap on the replay
+  shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet) incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
@@ -220,8 +228,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   (median over 3 s of detection, checked again and again since phones slow down as they heat
   up), the lite model takes over. MediaPipe drives
   everything live (sign, tracking, stop, trimming). It only gets part of each frame
-  (`detectionArea`): the start zone plus a quarter of its size on each side, widened to a square,
-  and while recording also wherever the gymnast has been (`coverPose`). MediaPipe shrinks its
+  (`detectionArea`): the start zone (for an automatic start plus a quarter of its size on each
+  side, where the runner comes from), widened to a square; while recording only the gymnast's
+  last sighting with their own size around it (`coverPose`). MediaPipe shrinks its
   input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
   pixels tall. The crop is a `visibleRect` view of the `VideoFrame` (no copy; gives the same
   poses as a canvas crop), mapped back to whole-frame coordinates in the worker.
@@ -398,6 +407,16 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
 - Start sign from far away: further than ~half the picture height, MediaPipe heavy rates crossed
   wrists at 0.1–0.5 visibility although their positions are right (phone frames shrunk to ½, ⅓
   and ¼: sign recognised in 7 of 8 at each size once arms needn't be visible).
+- Floor and Sprung, Android, November 2026 (161 clips of one day, Pixel 8): on the floor track at
+  the back of the hall with the wide lens, gymnasts were ~0.15 image heights tall and often not
+  found. MediaPipe heavy on the clips' frames found people in the start zone 459 times given
+  just the zone, 94 times with the quarter margin around it; while recording, the area (zone
+  plus everywhere the gymnast had been) reached the whole picture height within seconds. The
+  last sighting with its own size around it kept the next sighting's torso inside in all but 28
+  of 11 232 steps. At Sprung the zone spanned the picture and its bottom edge was the landing
+  mat's front, where nobody stands: recordings ran on until the gymnast was lost, the next one
+  often already running in, and a coach who set off the automatic start and stood in front of
+  the camera filled a 30 s clip.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

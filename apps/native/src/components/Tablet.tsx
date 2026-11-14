@@ -108,6 +108,8 @@ export default function Tablet() {
   } = useClips();
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [view, setView] = useState<'live' | 'replay'>('live');
+  /** A finished clip, shown once the replay on screen has been watched (`ClipPlayer`). */
+  const [nextId, setNextId] = useState<string | null>(null);
   const sessionRef = useRef<SessionState>(initialSession);
   const activeRef = useRef<ActiveRecording | null>(null);
   /** While waiting for an automatic start: recent detections, and where their stills go. */
@@ -115,7 +117,7 @@ export default function Tablet() {
   const prerollStillsRef = useRef<string | null>(null);
   /** Where the frame worklet currently saves stills (`saveStills`). */
   const stillsDirRef = useRef<string | null>(null);
-  /** Where the gymnast being recorded has been, so detection keeps looking there too. */
+  /** Around the gymnast being recorded, where detection looks for them next. */
   const coveredRef = useRef<Zone | null>(null);
   const clipStripScrollRef = useRef(0);
 
@@ -162,13 +164,19 @@ export default function Tablet() {
   const aspectRatio = portrait ? 1 / sensorAspect : sensorAspect;
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
+  // Without a replay on screen, a finished clip opens right away.
+  if (nextId !== null && !showReplay) {
+    setCurrentId(nextId);
+    setView('replay');
+    setNextId(null);
+  }
   const buffering = runUp !== null && detection.ready && !editingZone && status !== 'recording';
   const compact = screen.width < WIDE_SCREEN;
   const liveWidth = screen.width * (compact ? 1 / 3 : 1 / 4);
   const livePicture = useDragSpot(
     screen,
     { width: liveWidth, height: liveWidth / aspectRatio },
-    () => setView('live'),
+    showLive,
   );
   const picture: Frame = showReplay
     ? { ...livePicture.position, width: liveWidth, height: liveWidth / aspectRatio }
@@ -195,8 +203,12 @@ export default function Tablet() {
 
   // Paused while the coach draws the zone, so nobody starts a recording in the meantime.
   useEffect(() => {
-    setLook(detectionArea(zone, aspectRatio, coveredRef.current), mirrored, editingZone);
-  }, [setLook, zone, aspectRatio, mirrored, editingZone]);
+    setLook(
+      detectionArea(zone, aspectRatio, coveredRef.current, runUp !== null),
+      mirrored,
+      editingZone,
+    );
+  }, [setLook, zone, aspectRatio, mirrored, editingZone, runUp]);
 
   // Automatic starts come late, so the recorder keeps the last seconds encoded while waiting,
   // and the detections with stills of whoever is there.
@@ -209,6 +221,12 @@ export default function Tablet() {
       seenRef.current = [];
     };
   }, [clipRecorder, buffering]);
+
+  /** The live picture, chosen by hand: a clip waiting to be shown stays in the list only. */
+  function showLive() {
+    setView('live');
+    setNextId(null);
+  }
 
   function saveStills(dir: string | null) {
     if (dir === stillsDirRef.current) return;
@@ -249,8 +267,7 @@ export default function Tablet() {
       .then(
         (clip) => {
           addClip(clip);
-          setCurrentId(clip.id);
-          setView('replay');
+          setNextId(clip.id);
         },
         (e: unknown) => setRecordError(e instanceof Error ? e.message : String(e)),
       )
@@ -283,10 +300,8 @@ export default function Tablet() {
     if (result.event?.type === 'stop') recordingStopped();
 
     const recording = result.state.kind === 'recording';
-    if (recording && result.target) {
-      coveredRef.current = coverPose(coveredRef.current, result.target);
-    }
-    setLook(detectionArea(zone, frameAspect, coveredRef.current), mirrored, false);
+    if (recording && result.target) coveredRef.current = coverPose(result.target);
+    setLook(detectionArea(zone, frameAspect, coveredRef.current, runUp !== null), mirrored, false);
 
     setStatus(
       recording
@@ -321,6 +336,7 @@ export default function Tablet() {
       onSelect={(clip) => {
         setCurrentId(clip.id);
         setView('replay');
+        setNextId(null);
       }}
     />
   );
@@ -340,9 +356,15 @@ export default function Tablet() {
           skeletonProgress={skeletonProgress[current.id] ?? null}
           picture={fit(screen, current.aspectRatio)}
           clipStrip={clipStrip}
-          onLive={() => setView('live')}
+          newerClip={nextId !== null}
+          onWatched={() => {
+            setCurrentId(nextId);
+            setNextId(null);
+          }}
+          onLive={showLive}
           onDelete={() => {
             const remaining = removeClip(current);
+            setNextId(null);
             setCurrentId(remaining[0]?.id ?? null);
             if (remaining.length === 0) setView('live');
           }}
@@ -437,7 +459,7 @@ export default function Tablet() {
               setArmedAt(null);
               setStatus('idle');
               setBoxes({ poses: [], recording: false });
-              setView('live');
+              showLive();
               setEditingZone(true);
             }}
             onSettings={() => setSettingsOpen(true)}

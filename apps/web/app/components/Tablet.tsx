@@ -75,7 +75,7 @@ export default function Tablet() {
   const seenRef = useRef<Seen[]>([]);
   /** Where detection looks (`detectionArea`); the whole picture until the first frame. */
   const areaRef = useRef<Zone>({ left: 0, top: 0, right: 1, bottom: 1 });
-  /** Where the gymnast being recorded has been, so detection keeps looking there too. */
+  /** Around the gymnast being recorded, where detection looks for them next. */
   const coveredRef = useRef<Zone | null>(null);
   /** Capture time of the last detected frame: where a recording stopped by hand ends. */
   const lastFrameTimeRef = useRef(0);
@@ -211,9 +211,9 @@ export default function Tablet() {
       coveredRef.current = !activeRef.current
         ? null
         : result.target
-          ? coverPose(coveredRef.current, result.target)
+          ? coverPose(result.target)
           : coveredRef.current;
-      areaRef.current = detectionArea(zone, aspectRatio, coveredRef.current);
+      areaRef.current = detectionArea(zone, aspectRatio, coveredRef.current, runUp !== null);
 
       setStatus(
         activeRef.current

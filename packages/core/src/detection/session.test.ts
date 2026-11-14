@@ -4,6 +4,7 @@ import {
   IDLE_MS,
   LOST_IN_ELEMENT_MS,
   LOST_MS,
+  RUN_UP_IDLE_MS,
   SIGN_HOLD_MS,
   initialSession,
   step,
@@ -327,6 +328,23 @@ describe('stopping', () => {
     ];
     const { events } = run(scene, LONG, { from: recording(0.45) });
     expect(events[0]?.event).toEqual({ type: 'stop', reason: 'idle' });
+  });
+
+  it('stops when someone who started it by running in only stands', () => {
+    // Runs into the zone and stops there, as a coach walking in fast.
+    const scene: Scene = (t) => [makePose({ x: Math.min(0.45, (0.5 * t) / 1000), feetY: 0.9 })];
+    const { events } = run(scene, LONG, { runUp: 'any' });
+    expect(events.map(({ event }) => event.type)).toEqual(['start', 'stop']);
+    expect(events[1].event).toEqual({ type: 'stop', reason: 'idle' });
+    expect(events[1].time - events[0].time).toBeGreaterThanOrEqual(IDLE_MS);
+  });
+
+  it('stops soon after the landing with a run-up from the side', () => {
+    const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, lift: upAndDown(t) })];
+    const { events } = run(scene, LONG, { from: recording(0.45), runUp: 'left' });
+    expect(events[0]?.event).toEqual({ type: 'stop', reason: 'idle' });
+    expect(events[0].time).toBeGreaterThanOrEqual(1500 + RUN_UP_IDLE_MS);
+    expect(events[0].time).toBeLessThan(2000 + RUN_UP_IDLE_MS);
   });
 
   it('keeps recording while the gymnast rests still in support on the bar', () => {

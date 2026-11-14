@@ -4,7 +4,7 @@ import { frameDuration, poseAt, routineRange, type Clip } from '@nomol/core/reco
 import { FULL_VIEW, zoomView, type View as Zoom } from '@nomol/core/zoom';
 import { useEvent, useEventListener } from 'expo';
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { exportClip } from '../lib/clip-store';
 import type { SkeletonProgress } from '../lib/skeleton';
@@ -32,6 +32,13 @@ const SKELETON_TEXT: Record<SkeletonProgress['stage'], string> = {
 };
 
 const CONTROLS_HIDE_MS = 3000;
+/**
+ * A newer clip takes over once this one has been on screen this long, whatever its length, and
+ * nobody has touched the screen for `UNTOUCHED_MS` while it plays: a recording finishing
+ * meanwhile switched away from the one being reviewed.
+ */
+const WATCH_MS = 60_000;
+const UNTOUCHED_MS = 10_000;
 /** Often enough for a smooth timeline and skeleton. */
 const TIME_UPDATE_S = 1 / 30;
 const DOUBLE_TAP_MS = 300;
@@ -75,6 +82,10 @@ type Props = {
   picture: Frame;
   /** The list of recent clips, shown above the controls. */
   clipStrip: ReactNode;
+  /** A newer clip is waiting to be shown (`onWatched`). */
+  newerClip: boolean;
+  /** This clip has been watched long enough for the newer one, see `WATCH_MS`. */
+  onWatched: () => void;
   onLive: () => void;
   onDelete: () => void;
 };
@@ -88,6 +99,8 @@ export default function ClipPlayer({
   skeletonProgress,
   picture,
   clipStrip,
+  newerClip,
+  onWatched,
   onLive,
   onDelete,
 }: Props) {
@@ -103,7 +116,8 @@ export default function ClipPlayer({
   });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
   const [timeMs, setTimeMs] = useState(routine.startMs);
-  const [skeleton, setSkeleton] = useState(true);
+  // Off until switched on: the replay skeleton isn't reliable enough yet to show by default.
+  const [skeleton, setSkeleton] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -121,6 +135,19 @@ export default function ClipPlayer({
     const timer = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_MS);
     return () => clearTimeout(timer);
   }, [isPlaying, controlsVisible, lastTouch]);
+
+  const [watched, setWatched] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setWatched(true), WATCH_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  // Not while paused: someone is looking at a frame.
+  const watchedEvent = useEffectEvent(onWatched);
+  useEffect(() => {
+    if (!newerClip || !watched || !isPlaying) return;
+    const timer = setTimeout(watchedEvent, Math.max(lastTouch + UNTOUCHED_MS - Date.now(), 0));
+    return () => clearTimeout(timer);
+  }, [newerClip, watched, isPlaying, lastTouch]);
 
   /** Where the last time update was, to notice playback crossing the routine's end. */
   const previousMsRef = useRef(routine.startMs);
@@ -203,7 +230,7 @@ export default function ClipPlayer({
     gesture.touches = now;
   }
 
-  /** A double tap resets the zoom. */
+  /** A tap shows or hides the controls, a double tap resets the zoom. */
   function onPinchEnd() {
     const gesture = gestureRef.current;
     if (gesture.moved || Date.now() - gesture.startedAt > DOUBLE_TAP_MS) return;
@@ -211,6 +238,7 @@ export default function ClipPlayer({
       setZoom(FULL_VIEW);
       lastTapRef.current = 0;
     } else {
+      setControlsVisible(!controlsVisible);
       lastTapRef.current = Date.now();
     }
   }
@@ -227,10 +255,10 @@ export default function ClipPlayer({
   return (
     <View
       style={styles.root}
-      onTouchStart={() => {
-        setControlsVisible(true);
-        setLastTouch(Date.now());
-      }}
+      onTouchStart={() => setLastTouch(Date.now())}
+      // Taps beside the picture toggle the controls too.
+      onStartShouldSetResponder={() => true}
+      onResponderRelease={() => setControlsVisible(!controlsVisible)}
     >
       {/* The clip's own shape: the phone may have been turned since it was recorded. */}
       <View
@@ -259,7 +287,9 @@ export default function ClipPlayer({
 
       <View
         style={[styles.controls, !controlsVisible && styles.hidden]}
-        pointerEvents={controlsVisible ? 'box-none' : 'none'}
+        pointerEvents={controlsVisible ? 'auto' : 'none'}
+        // A tap between the buttons shouldn't hide them.
+        onStartShouldSetResponder={() => true}
       >
         {clipStrip}
         {skeletonProgress && (

@@ -16,6 +16,13 @@ const SIGN_DROPOUT_MS = 250;
  */
 export const IDLE_MS = 6000;
 /**
+ * With an automatic start from one side (Sprung) the jump is the one element. After 6 s of
+ * standing, the next gymnast had often run in and ended up in the same clip; on 14 Sprung clips
+ * (November 2026, floor line put where people stood after landing) 2.5 s stopped 7 of them
+ * after the landing, 6 s one.
+ */
+export const RUN_UP_IDLE_MS = 2500;
+/**
  * Largest torso jump between sightings of the recorded gymnast. Going into a salto the torso
  * centre moved 0.32 in one frame (67 ms). Larger than `MAX_JUMP`, because the people around are
  * known (`others`) and can't be taken for the gymnast.
@@ -130,7 +137,9 @@ type Recording = SignState & {
   others: Point[];
   /**
    * Last time the gymnast wasn't standing on both feet, i.e. did an element. Null until the
-   * first one, so waiting before the routine never stops the recording.
+   * first one, so waiting before the routine never stops the recording. An automatic start is
+   * one: a coach who walked in fast enough to start it then stood in front of the camera for
+   * the rest of a 30 s clip.
    */
   lastElementAt: number | null;
 };
@@ -201,14 +210,20 @@ export function step(state: SessionState, frame: Frame): StepResult {
   };
 }
 
-function startRecording(pose: Pose, poses: Pose[], time: number, sign: SignState): Recording {
+function startRecording(
+  pose: Pose,
+  poses: Pose[],
+  time: number,
+  sign: SignState,
+  lastElementAt: number | null = null,
+): Recording {
   return {
     kind: 'recording',
     target: torsoCenter(pose),
     size: torsoLength(pose),
     lastSeen: time,
     others: othersThan(pose, poses),
-    lastElementAt: null,
+    lastElementAt,
     ...sign,
   };
 }
@@ -324,7 +339,7 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
     });
   if (runner) {
     return {
-      state: startRecording(runner, frame.poses, frame.time, sign),
+      state: startRecording(runner, frame.poses, frame.time, sign, frame.time),
       event: { type: 'start', reason: 'runUp', pose: runner },
       target: runner,
     };
@@ -387,7 +402,8 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
     };
   }
   const lastElementAt = isOnFloor(pose, frame.zone) ? state.lastElementAt : frame.time;
-  if (lastElementAt !== null && frame.time - lastElementAt >= IDLE_MS) {
+  const idleMs = frame.runUp === 'left' || frame.runUp === 'right' ? RUN_UP_IDLE_MS : IDLE_MS;
+  if (lastElementAt !== null && frame.time - lastElementAt >= idleMs) {
     return { state: initialSession, event: { type: 'stop', reason: 'idle' }, target: pose };
   }
 
