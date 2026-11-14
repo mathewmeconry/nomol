@@ -9,7 +9,7 @@ import {
 } from '~/components/ui/select';
 import { Toggle } from '~/components/ui/toggle';
 import type { RunUp } from '@nomol/core/detection/session';
-import { runUpSchema } from '~/lib/zone-storage';
+import { parseRunUp } from '@nomol/core/settings';
 import { cn } from 'cn';
 
 export type Status = 'idle' | 'sign' | 'armed' | 'recording';
@@ -92,7 +92,7 @@ export default function LiveControls({
         <Select
           value={runUp ?? 'sign'}
           disabled={recording}
-          onValueChange={(value) => onRunUp(runUpSchema.safeParse(value).data ?? null)}
+          onValueChange={(value) => onRunUp(parseRunUp(value))}
         >
           <SelectTrigger
             size="sm"

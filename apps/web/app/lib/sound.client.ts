@@ -1,14 +1,14 @@
-let context: AudioContext | null = null;
+import { SETTINGS_KEYS, formatSoundOn, parseSoundOn } from '@nomol/core/settings';
 
-const SOUND_KEY = 'nomol.sound';
+let context: AudioContext | null = null;
 
 /** The start beep can be switched off per device, e.g. where several devices stand close. */
 export function loadSoundOn(): boolean {
-  return localStorage.getItem(SOUND_KEY) !== 'off';
+  return parseSoundOn(localStorage.getItem(SETTINGS_KEYS.sound));
 }
 
 export function saveSoundOn(on: boolean) {
-  localStorage.setItem(SOUND_KEY, on ? 'on' : 'off');
+  localStorage.setItem(SETTINGS_KEYS.sound, formatSoundOn(on));
 }
 
 /**

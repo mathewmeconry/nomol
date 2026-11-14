@@ -7,3 +7,5 @@ public
 .react-router
 .agents
 .claude
+apps/native/android
+.expo

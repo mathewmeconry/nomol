@@ -1,4 +1,5 @@
-import { DEFAULT_ZONE, loadRunUp, loadZone, parseZone, saveRunUp, saveZone } from './zone-storage';
+import { DEFAULT_ZONE } from '@nomol/core/settings';
+import { loadRunUp, loadZone, saveRunUp, saveZone } from './zone-storage';
 
 describe('zone storage', () => {
   it('round-trips a saved zone', () => {
@@ -7,10 +8,9 @@ describe('zone storage', () => {
     expect(loadZone()).toEqual(zone);
   });
 
-  it('falls back to the default zone for missing or broken data', () => {
-    expect(parseZone(null)).toEqual(DEFAULT_ZONE);
-    expect(parseZone('not json')).toEqual(DEFAULT_ZONE);
-    expect(parseZone('{"left":0.5,"top":0.2,"right":0.4,"bottom":0.9}')).toEqual(DEFAULT_ZONE);
+  it('falls back to the default zone for broken data', () => {
+    localStorage.setItem('nomol.zone', 'not json');
+    expect(loadZone()).toEqual(DEFAULT_ZONE);
   });
 
   it('remembers the automatic start, off by default', () => {

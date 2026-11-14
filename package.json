@@ -10,6 +10,8 @@
     "build": "pnpm --filter @nomol/web build",
     "dev": "pnpm --filter @nomol/web dev",
     "preview": "pnpm --filter @nomol/web preview",
+    "android:build": "pnpm --filter @nomol/native build",
+    "android:install": "pnpm --filter @nomol/native install:apk",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint --max-warnings=0",
     "lint:fix": "eslint --max-warnings=0 --fix",

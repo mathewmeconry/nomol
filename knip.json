@@ -1,9 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
+  "ignoreBinaries": ["adb"],
   "workspaces": {
     "apps/web": {
       "entry": ["public/sw.js"]
+    },
+    "apps/native": {
+      "entry": ["plugins/*.js"]
     },
     "packages/core": {}
   },

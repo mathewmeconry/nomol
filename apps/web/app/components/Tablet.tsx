@@ -33,7 +33,8 @@ import { startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording } from '~/lib/recording/recorder.client';
 import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
 import { cn } from 'cn';
-import { DEFAULT_ZONE, loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
+import { loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
+import { DEFAULT_ZONE } from '@nomol/core/settings';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;

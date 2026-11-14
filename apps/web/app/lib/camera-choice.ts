@@ -1,19 +1,18 @@
-const STORAGE_KEY = 'nomol.camera';
-const ZOOM_KEY = 'nomol.zoom';
+import { SETTINGS_KEYS, formatWide, parseWide } from '@nomol/core/settings';
 
 /** The chosen camera belongs to this device, like the start zone, so it lives in local storage. */
 export function loadCameraId(): string | null {
-  return localStorage.getItem(STORAGE_KEY);
+  return localStorage.getItem(SETTINGS_KEYS.camera);
 }
 
 export function saveCameraId(deviceId: string) {
-  localStorage.setItem(STORAGE_KEY, deviceId);
+  localStorage.setItem(SETTINGS_KEYS.camera, deviceId);
 }
 
 export function loadWide(): boolean {
-  return localStorage.getItem(ZOOM_KEY) === 'wide';
+  return parseWide(localStorage.getItem(SETTINGS_KEYS.zoom));
 }
 
 export function saveWide(wide: boolean) {
-  localStorage.setItem(ZOOM_KEY, wide ? 'wide' : 'normal');
+  localStorage.setItem(SETTINGS_KEYS.zoom, formatWide(wide));
 }

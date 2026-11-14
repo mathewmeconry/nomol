@@ -3,7 +3,7 @@ import { Button } from '~/components/ui/button';
 import { normalizeZone, type Zone } from '@nomol/core/detection/zone';
 import type { Point } from '@nomol/core/detection/pose';
 import { cn } from 'cn';
-import { DEFAULT_ZONE } from '~/lib/zone-storage';
+import { DEFAULT_ZONE } from '@nomol/core/settings';
 
 /** Smaller than about one body width is almost certainly a slip of the finger. */
 const MIN_SIZE = 0.05;

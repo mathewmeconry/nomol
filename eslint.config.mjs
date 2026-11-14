@@ -66,6 +66,12 @@ export default [
     },
   },
   {
+    // Expo config plugins are loaded by Node as CommonJS.
+    files: ['apps/native/plugins/**/*.js'],
+    languageOptions: { sourceType: 'commonjs', globals: globals.node },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     // Tests rely on partial mocks (`as any`); source files stay strict.
     files: ['**/*.test.{ts,tsx}', 'packages/core/src/tests/**'],
     rules: {
