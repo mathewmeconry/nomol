@@ -7,6 +7,7 @@ import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { exportClip } from '../lib/clip-store';
+import type { SkeletonProgress } from '../lib/skeleton';
 import SkeletonOverlay from './SkeletonOverlay';
 import { colors, type Frame } from './theme';
 import Timeline from './Timeline';
@@ -24,6 +25,11 @@ const STEPS = [
   { frames: 1, icon: 'chevron-right', name: '1 Bild vor' },
   { frames: 5, icon: 'chevron-double-right', name: '5 Bilder vor' },
 ] as const;
+
+const SKELETON_TEXT: Record<SkeletonProgress['stage'], string> = {
+  compute: 'Skelett wird berechnet …',
+  failed: 'Skelett konnte nicht berechnet werden.',
+};
 
 const CONTROLS_HIDE_MS = 3000;
 /** Often enough for a smooth timeline and skeleton. */
@@ -63,6 +69,8 @@ function fingers(points: Point[]) {
 
 type Props = {
   clip: Clip;
+  /** While the skeleton is being computed; frames without one show no skeleton yet. */
+  skeletonProgress: SkeletonProgress | null;
   /** Where the clip's picture fits on the screen. */
   picture: Frame;
   /** The list of recent clips, shown above the controls. */
@@ -75,7 +83,14 @@ type Props = {
  * Plays a clip's routine in a loop, with slow motion, frame stepping, pinch zoom and the replay
  * skeleton on top. Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({ clip, picture, clipStrip, onLive, onDelete }: Props) {
+export default function ClipPlayer({
+  clip,
+  skeletonProgress,
+  picture,
+  clipStrip,
+  onLive,
+  onDelete,
+}: Props) {
   const [routine] = useState(() => routineRange(clip));
   // Half speed by default: elements are fast, and it still plays smoothly.
   const [speed, setSpeed] = useState(0.5);
@@ -247,6 +262,21 @@ export default function ClipPlayer({ clip, picture, clipStrip, onLive, onDelete 
         pointerEvents={controlsVisible ? 'box-none' : 'none'}
       >
         {clipStrip}
+        {skeletonProgress && (
+          <View style={styles.progressRow} accessibilityRole="progressbar">
+            <Text style={styles.progressText}>{SKELETON_TEXT[skeletonProgress.stage]}</Text>
+            {skeletonProgress.stage !== 'failed' && (
+              <>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressBar, { width: `${skeletonProgress.percent}%` }]} />
+                </View>
+                <Text style={[styles.progressText, styles.mono, styles.percent]}>
+                  {skeletonProgress.percent} %
+                </Text>
+              </>
+            )}
+          </View>
+        )}
         <Timeline
           valueMs={timeMs}
           durationMs={clip.durationMs}
@@ -378,5 +408,16 @@ const styles = StyleSheet.create({
   text: { color: colors.text, fontSize: 14, fontWeight: '600' },
   mono: { fontFamily: 'monospace' },
   time: { color: '#cbd5e1', fontSize: 12 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  progressText: { color: '#cbd5e1', fontSize: 12 },
+  progressTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  progressBar: { height: '100%', backgroundColor: colors.text },
+  percent: { width: 40, textAlign: 'right' },
   spacer: { flex: 1 },
 });

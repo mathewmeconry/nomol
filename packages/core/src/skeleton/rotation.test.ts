@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { torsoCenter, type Pose } from '../detection/pose';
 import { makePose } from '../tests/poses';
-import { bodyAngle, createTracker, fromView, type View } from './rotation';
+import {
+  bodyAngle,
+  createTracker,
+  fromView,
+  posesFromView,
+  skeletonPasses,
+  type View,
+} from './rotation';
 
 const W = 640;
 const H = 360;
@@ -48,34 +55,88 @@ describe('fromView', () => {
 });
 
 describe('createTracker', () => {
-  it('keeps a gymnast going into a handstand and back the right way up', () => {
+  it('keeps a gymnast going into a handstand and back the right way up', async () => {
     const next = createTracker(W, H);
     const angles = [0, 0.4, 0.9, 1.5, 2.1, 2.7, Math.PI, Math.PI, 2.6, 1.9, 1.2, 0.5, 0];
     for (const angle of angles) {
       const truth = turned(gymnast, angle);
       // The live skeleton may be flipped; only its torso centre and size are used.
-      const pose = next(turned(truth, Math.PI), fakeDetector(truth));
+      const pose = await next(turned(truth, Math.PI), fakeDetector(truth));
       expect(pose).not.toBeNull();
       expect(angleDiff(bodyAngle(pose!, W, H), angle)).toBeLessThan(0.01);
     }
   });
 
-  it('never takes someone else for the gymnast', () => {
+  it('never takes someone else for the gymnast', async () => {
     const next = createTracker(W, H);
-    expect(next(gymnast, () => [bystander])).toBeNull();
+    expect(await next(gymnast, () => [bystander])).toBeNull();
   });
 
-  it('does not take someone right next to the gymnast when MediaPipe misses the gymnast', () => {
+  it('does not take someone right next to the gymnast when MediaPipe misses the gymnast', async () => {
     // As when running past someone squatting by the springboard: ~0.1 image heights away.
     const next = createTracker(W, H);
     const squatting = makePose({ x: 0.55, feetY: 0.8 });
-    expect(next(gymnast, () => [squatting])).toBeNull();
+    expect(await next(gymnast, () => [squatting])).toBeNull();
   });
 
-  it('carries on where the gymnast was when the live tracking lost them', () => {
+  it('carries on where the gymnast was when the live tracking lost them', async () => {
     const next = createTracker(W, H);
-    next(gymnast, fakeDetector(gymnast));
-    const pose = next(null, fakeDetector(gymnast));
+    await next(gymnast, fakeDetector(gymnast));
+    const pose = await next(null, fakeDetector(gymnast));
     expect(pose).toBe(gymnast);
+  });
+
+  it('picks up where it left off when fed its earlier results', async () => {
+    // How the Android app resumes after a restart without detecting the done frames again.
+    const angles = [0, 0.5, 1.1, 1.7, 2.3, 2.9, Math.PI, 2.5];
+    const first = createTracker(W, H);
+    const results: (Pose | null)[] = [];
+    for (const angle of angles) {
+      const truth = turned(gymnast, angle);
+      results.push(await first(truth, fakeDetector(truth)));
+    }
+    const resumed = createTracker(W, H);
+    for (const [i, angle] of angles.entries()) {
+      const truth = turned(gymnast, angle);
+      const stored = results[i];
+      const pose =
+        i < 5
+          ? await resumed(truth, () => (stored ? [stored] : []))
+          : await resumed(truth, fakeDetector(truth));
+      expect(pose).toEqual(stored);
+    }
+  });
+
+  it('waits for a detector that answers asynchronously', async () => {
+    const next = createTracker(W, H);
+    expect(await next(gymnast, (view) => Promise.resolve(fakeDetector(gymnast)(view)))).toBe(
+      gymnast,
+    );
+  });
+});
+
+describe('posesFromView', () => {
+  it('maps poses in a view to the frame, keeping visibility', () => {
+    const view = { center: { x: 320, y: 180 }, size: 100, angle: 0 };
+    const [pose] = posesFromView([[{ x: 0.5, y: 0, visibility: 0.7 }]], view, W, H);
+    expect(pose[0].x).toBeCloseTo(0.5);
+    expect(pose[0].y).toBeCloseTo(130 / H);
+    expect(pose[0].visibility).toBe(0.7);
+  });
+});
+
+describe('skeletonPasses', () => {
+  const samples = [0, 100, 200, 300, 400].map((time) => ({ time }));
+
+  it('goes forwards from the routine start, then backwards over the wait', () => {
+    expect(skeletonPasses(samples, 250)).toEqual([
+      [{ time: 300 }, { time: 400 }],
+      [{ time: 200 }, { time: 100 }, { time: 0 }],
+    ]);
+  });
+
+  it('goes forwards through all when the routine starts first or never', () => {
+    expect(skeletonPasses(samples, 0)).toEqual([samples]);
+    expect(skeletonPasses(samples, 1000)).toEqual([samples]);
   });
 });

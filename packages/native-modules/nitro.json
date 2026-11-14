@@ -15,6 +15,12 @@
         "implementationClassName": "HybridPoseLandmarker"
       }
     },
+    "SkeletonLandmarker": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridSkeletonLandmarker"
+      }
+    },
     "StartSound": {
       "android": {
         "language": "kotlin",

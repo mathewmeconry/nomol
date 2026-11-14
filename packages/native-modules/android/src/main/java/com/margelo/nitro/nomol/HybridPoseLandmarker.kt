@@ -4,18 +4,13 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.util.Log
 import com.google.mediapipe.framework.image.BitmapImageBuilder
-import com.google.mediapipe.tasks.core.BaseOptions
-import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
-import com.margelo.nitro.NitroModules
 import com.margelo.nitro.camera.HybridFrameSpec
 import com.margelo.nitro.camera.public.NativeFrame
 import com.margelo.nitro.core.Promise
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
@@ -37,16 +32,7 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
 
   override fun load(model: Model): Promise<Unit> =
     Promise.async {
-      val name = if (model == Model.HEAVY) "heavy" else "lite"
-      val buffer = readAsset("pose_landmarker_$name.task")
-      // The GPU delegate is much faster but may not start on every phone.
-      val created =
-        try {
-          create(buffer, Delegate.GPU)
-        } catch (e: Exception) {
-          Log.w(TAG, "GPU delegate failed, using CPU", e)
-          create(buffer, Delegate.CPU)
-        }
+      val created = createLandmarker(if (model == Model.HEAVY) "heavy" else "lite", RunningMode.VIDEO)
       synchronized(lock) {
         landmarker?.close()
         landmarker = created
@@ -94,15 +80,7 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
       }
     input.recycle()
 
-    val result = DoubleArray(landmarks.sumOf { it.size } * 3)
-    var i = 0
-    for (pose in landmarks) {
-      for (landmark in pose) {
-        result[i++] = landmark.x().toDouble()
-        result[i++] = landmark.y().toDouble()
-        result[i++] = landmark.visibility().orElse(1f).toDouble()
-      }
-    }
+    val result = flatten(landmarks)
     val ms = (System.nanoTime() - start) / 1e6
     if (++count % LOG_EVERY == 0) {
       Log.d(TAG, "${image.width}x${image.height} crop ${crop.width.toInt()}x${crop.height.toInt()} turned $rotation: ${"%.1f".format(ms)} ms, ${landmarks.size} poses")
@@ -148,33 +126,8 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     }
   }
 
-  private fun create(
-    model: ByteBuffer,
-    delegate: Delegate,
-  ): PoseLandmarker {
-    val options =
-      PoseLandmarker.PoseLandmarkerOptions
-        .builder()
-        .setBaseOptions(BaseOptions.builder().setModelAssetBuffer(model).setDelegate(delegate).build())
-        .setRunningMode(RunningMode.VIDEO)
-        .setNumPoses(MAX_POSES)
-        .build()
-    return PoseLandmarker.createFromOptions(context(), options)
-  }
-
-  /** Read into memory: MediaPipe can't open compressed assets by path. */
-  private fun readAsset(name: String): ByteBuffer {
-    val bytes = context().assets.open(name).use { it.readBytes() }
-    return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).put(bytes).apply { rewind() }
-  }
-
-  private fun context() = NitroModules.applicationContext ?: throw Error("No application context")
-
   companion object {
     private const val TAG = "NomolPose"
-
-    /** Spotters and waiting gymnasts are often in the picture too. */
-    private const val MAX_POSES = 4
 
     private const val MAX_SIDE = 512f
 

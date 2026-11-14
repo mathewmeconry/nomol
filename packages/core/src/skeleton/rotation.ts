@@ -13,8 +13,11 @@ import { LM, torsoCenter, type Point, type Pose } from '../detection/pose';
 /** Part of a frame MediaPipe looks at: a square around `center`, turned by `angle`. In pixels. */
 export type View = { center: Point; size: number; angle: number };
 
-/** Runs MediaPipe on a view; poses normalized to the whole frame, like the live ones. */
-export type DetectView = (view: View) => Pose[];
+/**
+ * Runs MediaPipe on a view; poses normalized to the whole frame, like the live ones. The
+ * Android app asks its native code, which answers asynchronously.
+ */
+export type DetectView = (view: View) => Pose[] | Promise<Pose[]>;
 
 /** The joints that make up the body; hands, feet and face details are too unsure to judge by. */
 const MAIN: number[] = [
@@ -113,7 +116,7 @@ export function createTracker(width: number, height: number) {
   const sizes: number[] = [];
 
   /** @param tracked the live tracking's pose in this frame, if it had one */
-  return function next(tracked: Pose | null, detect: DetectView): Pose | null {
+  return async function next(tracked: Pose | null, detect: DetectView): Promise<Pose | null> {
     if (tracked) {
       center = centerPx(tracked, width, height);
       sizes.push(extent(tracked, width, height));
@@ -132,7 +135,7 @@ export function createTracker(width: number, height: number) {
     for (const turn of [0, Math.PI, Math.PI / 2, -Math.PI / 2]) {
       const viewAngle = predicted + turn;
       const pose = nearest(
-        detect({ center, size, angle: viewAngle }),
+        await detect({ center, size, angle: viewAngle }),
         center,
         width,
         height,
@@ -151,7 +154,7 @@ export function createTracker(width: number, height: number) {
       const whole = { x: width / 2, y: height / 2 };
       for (const viewAngle of [0, Math.PI]) {
         const view = { center: whole, size: Math.max(width, height), angle: viewAngle };
-        const pose = nearest(detect(view), center, width, height, reach);
+        const pose = nearest(await detect(view), center, width, height, reach);
         if (pose && (!best || visibility(pose) > best.score)) {
           best = { pose, score: visibility(pose), upright: false };
         }
@@ -178,4 +181,27 @@ export function fromView(point: Point, view: View): Point {
   const cos = Math.cos(view.angle);
   const sin = Math.sin(view.angle);
   return { x: view.center.x + x * cos - y * sin, y: view.center.y + x * sin + y * cos };
+}
+
+/** MediaPipe's poses in a view (normalized to the view) as poses normalized to the frame. */
+export function posesFromView(poses: Pose[], view: View, width: number, height: number): Pose[] {
+  return poses.map((pose) =>
+    pose.map((landmark) => {
+      const point = fromView(landmark, view);
+      return { x: point.x / width, y: point.y / height, visibility: landmark.visibility };
+    }),
+  );
+}
+
+/**
+ * The order the saved frames are computed in: from the routine's start, where the gymnast is
+ * upright, forwards to the end, then backwards over the wait before it. Each pass starts a new
+ * tracker. The part the replay loops is ready soonest this way.
+ */
+export function skeletonPasses<T extends { time: number }>(samples: T[], routineStartMs: number) {
+  const start = samples.findIndex((sample) => sample.time >= routineStartMs);
+  const split = start === -1 ? 0 : start;
+  return [samples.slice(split), samples.slice(0, split).reverse()].filter(
+    (pass) => pass.length > 0,
+  );
 }

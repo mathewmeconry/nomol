@@ -2,7 +2,7 @@
 import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import { createLandmarker } from '~/lib/detection/landmarker.client';
 import type { Pose } from '@nomol/core/detection/pose';
-import { createTracker, fromView, type View } from '@nomol/core/skeleton/rotation';
+import { createTracker, posesFromView, type View } from '@nomol/core/skeleton/rotation';
 
 /** Side of the turned view handed to MediaPipe. */
 const VIEW_SIZE = 512;
@@ -41,16 +41,8 @@ function detectView(frame: ImageBitmap, view: View): Pose[] {
   viewCtx.rotate(-view.angle);
   viewCtx.translate(-view.center.x, -view.center.y);
   viewCtx.drawImage(frame, 0, 0);
-  return landmarker!.detect(viewCanvas).landmarks.map((pose) =>
-    pose.map((landmark) => {
-      const point = fromView(landmark, view);
-      return {
-        x: point.x / frame.width,
-        y: point.y / frame.height,
-        visibility: landmark.visibility,
-      };
-    }),
-  );
+  const { landmarks } = landmarker!.detect(viewCanvas);
+  return posesFromView(landmarks, view, frame.width, frame.height);
 }
 
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
@@ -63,7 +55,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     }
     const frame = await createImageBitmap(request.image);
     if (request.restart || !next) next = createTracker(frame.width, frame.height);
-    const pose = next(request.tracked, (view) => detectView(frame, view));
+    const pose = await next(request.tracked, (view) => detectView(frame, view));
     frame.close();
     reply({ type: 'frame', pose });
   } catch (error) {

@@ -96,7 +96,14 @@ export default function Tablet() {
   const [status, setStatus] = useState<Exclude<Status, 'loading'>>('idle');
   const [boxes, setBoxes] = useState<Boxes>({ poses: [], recording: false });
   const [startSound] = useState(createStartSound);
-  const { clips, add: addClip, remove: removeClip, removeAll: removeAllClips } = useClips();
+  const {
+    clips,
+    skeletonProgress,
+    add: addClip,
+    remove: removeClip,
+    removeAll: removeAllClips,
+    pauseSkeleton,
+  } = useClips();
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [view, setView] = useState<'live' | 'replay'>('live');
   const sessionRef = useRef<SessionState>(initialSession);
@@ -168,6 +175,7 @@ export default function Tablet() {
       runUp,
     });
     activeRef.current = active;
+    pauseSkeleton(true);
     detection.saveStills(stillsPath(active));
     setRecordError(null);
     if (soundOn) startSound.play();
@@ -180,14 +188,18 @@ export default function Tablet() {
     if (!active) return;
     activeRef.current = null;
     detection.saveStills(null);
-    finishRecording(active, time).then(
-      (clip) => {
-        addClip(clip);
-        setCurrentId(clip.id);
-        setView('replay');
-      },
-      (e: unknown) => setRecordError(e instanceof Error ? e.message : String(e)),
-    );
+    finishRecording(active, time)
+      .then(
+        (clip) => {
+          addClip(clip);
+          setCurrentId(clip.id);
+          setView('replay');
+        },
+        (e: unknown) => setRecordError(e instanceof Error ? e.message : String(e)),
+      )
+      .finally(() => {
+        if (!activeRef.current) pauseSkeleton(false);
+      });
   }
 
   function onDetected({ poses, time, aspectRatio: frameAspect, still }: Detected) {
@@ -262,6 +274,7 @@ export default function Tablet() {
         <ClipPlayer
           key={current.id}
           clip={current}
+          skeletonProgress={skeletonProgress[current.id] ?? null}
           picture={fit(screen, current.aspectRatio)}
           clipStrip={clipStrip}
           onLive={() => setView('live')}

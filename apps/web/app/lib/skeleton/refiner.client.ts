@@ -1,5 +1,6 @@
 import type { Pose } from '@nomol/core/detection/pose';
 import type { ClipFrame } from '@nomol/core/recording/clip';
+import { skeletonPasses } from '@nomol/core/skeleton/rotation';
 import type { WorkerRequest, WorkerResponse } from './skeleton.worker';
 
 /** Long side of the saved frames. Enough for MediaPipe, which sees 256 px of the gymnast. */
@@ -73,11 +74,8 @@ export function createSkeletonRefiner(model: Uint8Array) {
   async function run(job: SkeletonJob) {
     worker ??= startWorker();
     const target = await worker;
-    const start = job.samples.findIndex((sample) => sample.time >= job.first.startMs);
-    const split = start === -1 ? 0 : start;
-    const passes = [job.samples.slice(split), job.samples.slice(0, split).reverse()];
     let done = 0;
-    for (const pass of passes) {
+    for (const pass of skeletonPasses(job.samples, job.first.startMs)) {
       let restart = true;
       for (const sample of pass) {
         await unpaused;

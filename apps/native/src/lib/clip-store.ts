@@ -1,9 +1,10 @@
 import type { Pose } from '@nomol/core/detection/pose';
-import type { Clip } from '@nomol/core/recording/clip';
+import type { Clip, ClipFrame } from '@nomol/core/recording/clip';
 import { exportBaseName, exportData, parseExport } from '@nomol/core/recording/export';
 import { createFileShare } from '@nomol/native-modules';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
+import z from 'zod';
 import { APP_VERSION } from './app-version';
 
 /**
@@ -13,7 +14,8 @@ import { APP_VERSION } from './app-version';
  * - `<name>.mp4`: the video, written there by the recorder
  * - `<name>.nomol.txt`: the export JSON (`exportData`), also what the app reads back
  * - `thumbnail.jpg`: a still from the middle of the routine
- * - `stills/*.jpg` and `samples.json`: frames for the replay skeleton (`Sample`)
+ * - `stills/*.jpg` and `samples.json`: frames for the replay skeleton (`Sample`), and
+ *   `skeleton-done.json` how many of them are computed; all deleted once the skeleton is complete
  *
  * The video and JSON carry the export's file names, so exporting shares them as they are.
  */
@@ -85,6 +87,89 @@ export async function loadClips(): Promise<Clip[]> {
   return clips
     .filter((clip) => clip !== null)
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+}
+
+const poseSchema = z.array(
+  z.object({ x: z.number(), y: z.number(), visibility: z.number().optional() }),
+);
+const samplesSchema = z.array(
+  z.object({ time: z.number(), file: z.string(), tracked: poseSchema.nullable() }),
+);
+const doneSchema = z.object({ done: z.number().int().nonnegative() });
+
+/** A clip's replay skeleton still to compute: its saved frames and how many are done. */
+export type PendingSkeleton = {
+  samples: Sample[];
+  /** Saved frames already computed, in the order they are computed (`skeletonPasses`). */
+  done: number;
+  /** Path of a saved frame. */
+  still: (sample: Sample) => string;
+};
+
+function skeletonFiles(id: string) {
+  const dir = new Directory(CLIPS, id);
+  return {
+    dir,
+    stills: new Directory(dir, 'stills'),
+    samples: new File(dir, 'samples.json'),
+    done: new File(dir, 'skeleton-done.json'),
+  };
+}
+
+/** Null when the skeleton is complete (its saved frames are deleted then) or unreadable. */
+export async function loadPendingSkeleton(id: string): Promise<PendingSkeleton | null> {
+  const files = skeletonFiles(id);
+  if (!files.samples.exists) return null;
+  try {
+    const samples = samplesSchema.safeParse(JSON.parse(await files.samples.text()));
+    if (!samples.success) return null;
+    const done = files.done.exists
+      ? doneSchema.safeParse(JSON.parse(await files.done.text()))
+      : null;
+    return {
+      samples: samples.data,
+      done: done?.success ? done.data.done : 0,
+      still: (sample) => filePath(new File(files.stills, sample.file)),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+/** Replaces the skeleton in the clip's JSON; everything else in it stays as recorded. */
+async function writeSkeleton(id: string, skeleton: ClipFrame[]) {
+  const dir = new Directory(CLIPS, id);
+  const data = dir
+    .list()
+    .find((entry) => entry instanceof File && entry.name.endsWith('.nomol.txt'));
+  if (!(data instanceof File)) return;
+  const stored = JSON.parse(await data.text()) as Record<string, unknown>;
+  // Written beside it and moved over it: the app may be closed mid-write, and a cut-off JSON
+  // would lose the whole clip.
+  const temporary = new File(dir, 'skeleton.tmp');
+  await temporary.write(JSON.stringify({ ...stored, skeleton }));
+  await temporary.move(data, { overwrite: true });
+}
+
+/**
+ * Stores the skeleton computed so far, so it shows after a restart and the computation
+ * continues from `done` there.
+ */
+export async function saveSkeleton(id: string, skeleton: ClipFrame[], done: number) {
+  await writeSkeleton(id, skeleton);
+  await skeletonFiles(id).done.write(JSON.stringify({ done }));
+}
+
+/**
+ * Stores the complete skeleton and deletes the saved frames it was computed from, which take
+ * most of a clip's space besides the video. The web app doesn't keep them either.
+ */
+export async function finishSkeleton(id: string, skeleton: ClipFrame[]) {
+  await writeSkeleton(id, skeleton);
+  const files = skeletonFiles(id);
+  for (const entry of [files.samples, files.done, files.stills]) {
+    if (entry.exists) entry.delete();
+  }
 }
 
 export function deleteClip(id: string) {
