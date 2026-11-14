@@ -6,30 +6,28 @@ import {
   type ClipFrame,
   type RecordedWith,
 } from '@nomol/core/recording/clip';
-import { createCameraClock } from '@nomol/native-modules';
-import { File } from 'expo-file-system';
-import type { CameraVideoOutput, Recorder } from 'react-native-vision-camera';
+import { PREROLL_MAX_MS, tracePreroll, type Seen } from '@nomol/core/recording/preroll';
+import type { ClipRecorder } from '@nomol/native-modules';
+import { Directory, File, Paths } from 'expo-file-system';
 import { APP_VERSION } from './app-version';
 import { filePath, newClipFolder, saveClip, type ClipFolder, type Sample } from './clip-store';
 
-/** The camera clock can't be off by more; beyond it the phone stamps frames with another clock. */
-const MAX_CLOCK_SKEW_MS = 1000;
+/**
+ * An automatic start's video begins at the last keyframe (every 0.5 s) at least this long before
+ * the trigger: 1.5–2 s before it, within the 1.5–3 s the web app keeps.
+ */
+const PREROLL_MS = 1500;
 
-let clock: ReturnType<typeof createCameraClock> | null = null;
+/** Stills saved while waiting for an automatic start; those of the runner move into the clip. */
+const PREROLL_STILLS = new Directory(Paths.cache, 'preroll');
 
 /** Everything gathered while recording. Times are camera times until the clip is made. */
 export type ActiveRecording = {
+  recorder: ClipRecorder;
   folder: ClipFolder;
   startedDate: Date;
-  recorder: Promise<Recorder>;
-  /**
-   * Camera time of the video's first frame. CameraX's encoder drops frames from before it
-   * started, and reports the start right after; the camera clock at that report is the video's
-   * time 0 within about a frame (the report's delay against the wait for the next frame).
-   */
+  /** Camera time of the video's first frame, its time 0. */
   started: Promise<number>;
-  /** Resolves once the recorder has finished writing the video. */
-  finished: Promise<void>;
   frames: ClipFrame[];
   samples: Sample[];
   zone: Zone;
@@ -38,50 +36,100 @@ export type ActiveRecording = {
 };
 
 /**
- * The camera clock now; the last detected frame's time if the phone stamps frames with
- * another clock (Android lets cameras use time since boot with or without deep sleep).
+ * Starts a clip at the frame detected at `time`. An automatic start's video begins before it,
+ * from the frames `recorder` kept while buffering.
  */
-function cameraNow(lastFrameTime: number) {
-  clock ??= createCameraClock();
-  const now = clock.now();
-  return Math.abs(now - lastFrameTime) < MAX_CLOCK_SKEW_MS ? now : lastFrameTime;
-}
-
 export function startRecording(
-  videoOutput: CameraVideoOutput,
-  lastFrameTime: () => number,
+  recorder: ClipRecorder,
+  time: number,
   zone: Zone,
   aspectRatio: number,
   start: Omit<RecordedWith, 'appVersion'>,
 ): ActiveRecording {
   const startedDate = new Date();
   const folder = newClipFolder(startedDate);
-  let onFinished = () => {};
-  let onError = (_error: Error) => {};
-  const finished = new Promise<void>((resolve, reject) => {
-    onFinished = resolve;
-    onError = reject;
-  });
-  const recorder = videoOutput.createRecorder({ filePath: filePath(folder.video) });
-  const started = recorder.then(async (created) => {
-    await created.startRecording(() => onFinished(), onError);
-    return cameraNow(lastFrameTime());
-  });
+  const from = start.startReason === 'runUp' ? time - PREROLL_MS : time;
+  const started = recorder.start(filePath(folder.video), from);
   // Errors surface when the recording is finished.
-  finished.catch(() => {});
   started.catch(() => {});
   return {
+    recorder,
     folder,
     startedDate,
-    recorder,
     started,
-    finished,
     frames: [],
     samples: [],
     zone,
     aspectRatio,
     recordedWith: { appVersion: APP_VERSION, ...start },
   };
+}
+
+/** Where the frame worklet saves stills while waiting for an automatic start; emptied. */
+export function prerollStillsPath() {
+  if (PREROLL_STILLS.exists) PREROLL_STILLS.delete();
+  PREROLL_STILLS.create({ intermediates: true });
+  return filePath(PREROLL_STILLS);
+}
+
+/** Keeps the detections of the last `PREROLL_MAX_MS`, deleting the stills that fall out. */
+export function rememberFrame(
+  seen: Seen<string>[],
+  time: number,
+  poses: Pose[],
+  still: string | null,
+): Seen<string>[] {
+  const recent: Seen<string>[] = [];
+  for (const frame of seen) {
+    if (time - frame.time <= PREROLL_MAX_MS) recent.push(frame);
+    else if (frame.kept) deleteStill(frame.kept);
+  }
+  return [...recent, { time, poses, kept: still && fileName(still) }];
+}
+
+function deleteStill(name: string) {
+  try {
+    new File(PREROLL_STILLS, name).delete();
+  } catch (_error) {
+    // Written in the background; one not there yet goes with the folder later.
+  }
+}
+
+/**
+ * Adds the runner's poses before the trigger, and their stills for the replay skeleton. The
+ * video's start isn't known yet; `finishRecording` drops poses from before it.
+ */
+export function addPreroll(
+  active: ActiveRecording,
+  seen: Seen<string>[],
+  pose: Pose,
+  poses: Pose[],
+  time: number,
+) {
+  const traced = tracePreroll(
+    seen,
+    -Infinity,
+    pose,
+    poses,
+    time,
+    active.aspectRatio,
+    active.recordedWith.runUp,
+  );
+  active.folder.stills.create({ intermediates: true, idempotent: true });
+  for (const frame of traced) {
+    active.frames.push({ time: frame.time, pose: frame.pose });
+    if (!frame.kept) continue;
+    try {
+      new File(PREROLL_STILLS, frame.kept).move(active.folder.stills);
+      active.samples.push({ time: frame.time, file: frame.kept, tracked: frame.pose });
+    } catch (_error) {
+      // Not written yet; the skeleton interpolates over the gap.
+    }
+  }
+}
+
+function fileName(path: string) {
+  return path.split('/').at(-1) ?? path;
 }
 
 /** Where the frame worklet saves stills (`usePoseDetection`). */
@@ -100,8 +148,9 @@ export function recordFrame(
   still: string | null,
 ) {
   if (pose) active.frames.push({ time, pose });
-  if (still) {
-    active.samples.push({ time, file: still.split('/').at(-1) ?? still, tracked: pose });
+  // Frames detected around the start may have saved theirs for the pre-roll instead.
+  if (still?.startsWith(stillsPath(active))) {
+    active.samples.push({ time, file: fileName(still), tracked: pose });
   }
 }
 
@@ -109,17 +158,11 @@ export function recordFrame(
  * Stops the recorder and stores the clip, with its thumbnail from the middle of the routine.
  * On failure the folder is removed and the error rethrown.
  */
-export async function finishRecording(
-  active: ActiveRecording,
-  lastFrameTime: number,
-): Promise<Clip> {
+export async function finishRecording(active: ActiveRecording): Promise<Clip> {
   try {
+    // Stopped first: a clip that never got a frame rejects `started` then.
+    const endedAt = await active.recorder.stop();
     const startedAt = await active.started;
-    const recorder = await active.recorder;
-    // The video runs until the recorder stops, later than the last detected frame.
-    const endedAt = cameraNow(lastFrameTime);
-    await recorder.stopRecording();
-    await active.finished;
 
     const relative = <T extends { time: number }>(item: T) => ({
       ...item,

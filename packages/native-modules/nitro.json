@@ -27,10 +27,10 @@
         "implementationClassName": "HybridStartSound"
       }
     },
-    "CameraClock": {
+    "ClipRecorder": {
       "android": {
         "language": "kotlin",
-        "implementationClassName": "HybridCameraClock"
+        "implementationClassName": "HybridClipRecorder"
       }
     },
     "FileShare": {

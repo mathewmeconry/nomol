@@ -119,4 +119,5 @@ dependencies {
   implementation "com.google.mediapipe:tasks-vision:1.2.3"
   implementation project(":react-native-nitro-modules")
   implementation project(":react-native-vision-camera")
+  testImplementation "junit:junit:4.13.2"
 }

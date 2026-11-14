@@ -7,7 +7,8 @@ import {
   type SessionState,
 } from '@nomol/core/detection/session';
 import { coverPose, detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
-import { createStartSound } from '@nomol/native-modules';
+import type { Seen } from '@nomol/core/recording/preroll';
+import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { callback } from 'react-native-nitro-modules';
@@ -16,14 +17,16 @@ import {
   useCamera,
   useCameraDevices,
   usePreviewOutput,
-  useVideoOutput,
 } from 'react-native-vision-camera';
 import { useClips } from '../hooks/use-clips';
 import { useDragSpot } from '../hooks/use-drag-spot';
 import { usePoseDetection, type Detected } from '../hooks/use-pose-detection';
 import {
+  addPreroll,
   finishRecording,
+  prerollStillsPath,
   recordFrame,
+  rememberFrame,
   startRecording,
   stillsPath,
   type ActiveRecording,
@@ -51,12 +54,6 @@ import ZoneEditor from './ZoneEditor';
 
 /** Until the preview reports its size; phone sensors are 4:3. */
 const DEFAULT_ASPECT = 4 / 3;
-
-/**
- * 4:3 like the preview and the detected frames, so the video shows exactly what was detected
- * (VisionCamera is patched to honour the aspect ratio). Full HD class: 1440×1080.
- */
-const VIDEO_SIZE = { width: 1080, height: 1440 };
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
@@ -108,8 +105,11 @@ export default function Tablet() {
   const [view, setView] = useState<'live' | 'replay'>('live');
   const sessionRef = useRef<SessionState>(initialSession);
   const activeRef = useRef<ActiveRecording | null>(null);
-  /** Capture time of the last detected frame: where a recording stopped by hand ends. */
-  const lastFrameTimeRef = useRef(0);
+  /** While waiting for an automatic start: recent detections, and where their stills go. */
+  const seenRef = useRef<Seen<string>[]>([]);
+  const prerollStillsRef = useRef<string | null>(null);
+  /** Where the frame worklet currently saves stills (`saveStills`). */
+  const stillsDirRef = useRef<string | null>(null);
   /** Where the gymnast being recorded has been, so detection keeps looking there too. */
   const coveredRef = useRef<Zone | null>(null);
   const clipStripScrollRef = useRef(0);
@@ -126,11 +126,13 @@ export default function Tablet() {
   const detection = usePoseDetection(onDetected);
   const { setLook } = detection;
   const previewOutput = usePreviewOutput();
-  const videoOutput = useVideoOutput({ targetResolution: VIDEO_SIZE });
+  const [clipRecorder] = useState(createClipRecorder);
+  // Read once: each read of the property gives a new JS object.
+  const [clipOutput] = useState(() => clipRecorder.output);
   useCamera({
     isActive: device !== undefined,
     device: device ?? 'back',
-    outputs: [previewOutput, detection.frameOutput, videoOutput],
+    outputs: [previewOutput, detection.frameOutput, clipOutput],
     // Stabilization crops the video, which then no longer matches the detected frames.
     constraints: [{ videoStabilizationMode: 'off' }],
     // The picture turns with the screen, so the zone stays where the coach drew it.
@@ -143,6 +145,7 @@ export default function Tablet() {
   const aspectRatio = portrait ? 1 / sensorAspect : sensorAspect;
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
+  const buffering = runUp !== null && detection.ready && !editingZone && status !== 'recording';
   const compact = screen.width < WIDE_SCREEN;
   const liveWidth = screen.width * (compact ? 1 / 3 : 1 / 4);
   const livePicture = useDragSpot(
@@ -165,30 +168,54 @@ export default function Tablet() {
     setLook(detectionArea(zone, aspectRatio, coveredRef.current), mirrored, editingZone);
   }, [setLook, zone, aspectRatio, mirrored, editingZone]);
 
+  // Automatic starts come late, so the recorder keeps the last seconds encoded while waiting,
+  // and the detections with stills of whoever is there.
+  useEffect(() => {
+    clipRecorder.setBuffering(buffering);
+    if (!buffering) return;
+    prerollStillsRef.current = prerollStillsPath();
+    return () => {
+      prerollStillsRef.current = null;
+      seenRef.current = [];
+    };
+  }, [clipRecorder, buffering]);
+
+  function saveStills(dir: string | null) {
+    if (dir === stillsDirRef.current) return;
+    stillsDirRef.current = dir;
+    detection.saveStills(dir);
+  }
+
   /**
-   * The video starts once CameraX has started its recorder, a moment after the trigger. An
-   * automatic start has no pre-roll yet: its video begins at the trigger, not before it.
+   * The video starts at the next keyframe after the trigger; an automatic start's at a buffered
+   * keyframe 1.5–2 s before it, with the runner traced back over the frames since.
    */
-  function recordingStarted(event: Extract<SessionEvent, { type: 'start' }>, frameAspect: number) {
-    const active = startRecording(videoOutput, () => lastFrameTimeRef.current, zone, frameAspect, {
+  function recordingStarted(
+    event: Extract<SessionEvent, { type: 'start' }>,
+    poses: Pose[],
+    time: number,
+    frameAspect: number,
+  ) {
+    const active = startRecording(clipRecorder, time, zone, frameAspect, {
       startReason: event.reason,
       runUp,
     });
+    if (event.reason === 'runUp') addPreroll(active, seenRef.current, event.pose, poses, time);
     activeRef.current = active;
     pauseSkeleton(true);
-    detection.saveStills(stillsPath(active));
+    saveStills(stillsPath(active));
     setRecordError(null);
     if (soundOn) startSound.play();
     setArmedAt(null);
   }
 
-  function recordingStopped(time: number) {
+  function recordingStopped() {
     coveredRef.current = null;
     const active = activeRef.current;
     if (!active) return;
     activeRef.current = null;
-    detection.saveStills(null);
-    finishRecording(active, time)
+    saveStills(null);
+    finishRecording(active)
       .then(
         (clip) => {
           addClip(clip);
@@ -204,7 +231,6 @@ export default function Tablet() {
 
   function onDetected({ poses, time, aspectRatio: frameAspect, still }: Detected) {
     if (editingZone) return;
-    lastFrameTimeRef.current = time;
     const result = step(sessionRef.current, {
       time,
       poses,
@@ -214,10 +240,17 @@ export default function Tablet() {
       aspectRatio: frameAspect,
     });
     sessionRef.current = result.state;
-    if (result.event?.type === 'start') recordingStarted(result.event, frameAspect);
+    if (result.event?.type === 'start') {
+      recordingStarted(result.event, poses, time, frameAspect);
+    } else if (!activeRef.current) {
+      const preroll = prerollStillsRef.current;
+      if (preroll) seenRef.current = rememberFrame(seenRef.current, time, poses, still);
+      // Stills only while someone is there, as only they can be the runner.
+      saveStills(preroll && poses.length > 0 ? preroll : null);
+    }
     const active = activeRef.current;
     if (active) recordFrame(active, time, result.target, still);
-    if (result.event?.type === 'stop') recordingStopped(time);
+    if (result.event?.type === 'stop') recordingStopped();
 
     const recording = result.state.kind === 'recording';
     if (recording && result.target) {
@@ -246,7 +279,7 @@ export default function Tablet() {
     sessionRef.current = initialSession;
     setStatus('idle');
     setBoxes({ poses: [], recording: false });
-    recordingStopped(lastFrameTimeRef.current);
+    recordingStopped();
   }
 
   const clipStrip = (

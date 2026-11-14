@@ -55,16 +55,15 @@ A pnpm workspace:
 
 - `apps/web`: the web app (`@nomol/web`)
 - `apps/native`: the Android app (`@nomol/native`, Expo / React Native), being ported from the
-  web app. It detects the start and end of a routine, records it, keeps the clips on the phone,
-  computes the replay skeleton and replays and exports them; the automatic start's pre-roll
-  follows.
+  web app. It detects the start and end of a routine, records it (an automatic start including
+  the seconds before it), keeps the clips on the phone, computes the replay skeleton and
+  replays and exports them.
 - `packages/core`: pure logic shared by both apps (`@nomol/core`): start and stop detection,
-  start zone, clips, export format, replay skeleton rotation, settings
+  start zone, clips, export format, pre-roll, replay skeleton rotation, settings
 - `packages/native-modules`: the Android app's native code (`@nomol/native-modules`, Kotlin
   Nitro modules): MediaPipe pose detection on camera frames and on the replay skeleton's
-  stills, the start beep, the camera clock
-  and sharing several files at once
-- `patches/`: a fix for react-native-vision-camera (records 4:3 when asked to)
+  stills, the video recorder with its look-back buffer, the start beep and sharing several
+  files at once
 
 ## Android app
 

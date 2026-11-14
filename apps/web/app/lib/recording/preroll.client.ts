@@ -1,9 +1,8 @@
+import { PREROLL_MAX_MS } from '@nomol/core/recording/preroll';
 import { startRecording, type Recording } from './recorder.client';
 
 /** Two recorders take turns, each restarted after twice this long. */
-const TURN_MS = 1500;
-/** The pre-roll is never longer than this; older detection data isn't needed. */
-export const PREROLL_MAX_MS = 2 * TURN_MS;
+const TURN_MS = PREROLL_MAX_MS / 2;
 
 type Running = { recording: Recording; startedAt: number };
 

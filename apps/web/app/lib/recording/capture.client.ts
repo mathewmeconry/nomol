@@ -1,5 +1,4 @@
 import type { Pose } from '@nomol/core/detection/pose';
-import { traceBack } from '@nomol/core/detection/session';
 import type { Zone } from '@nomol/core/detection/zone';
 import {
   routineRange,
@@ -7,7 +6,11 @@ import {
   type ClipFrame,
   type RecordedWith,
 } from '@nomol/core/recording/clip';
-import { PREROLL_MAX_MS } from '~/lib/recording/preroll.client';
+import {
+  PREROLL_MAX_MS,
+  tracePreroll,
+  type Seen as PrerollSeen,
+} from '@nomol/core/recording/preroll';
 import type { Recording } from '~/lib/recording/recorder.client';
 import { captureThumbnail } from '~/lib/recording/thumbnail.client';
 import { captureFrame, type SkeletonSample } from '~/lib/skeleton/refiner.client';
@@ -38,7 +41,7 @@ export type ActiveRecording = {
 };
 
 /** Detection results kept for the pre-roll, so its part of the clip gets a skeleton too. */
-export type Seen = { time: number; poses: Pose[]; image: Promise<Blob> | null };
+export type Seen = PrerollSeen<Promise<Blob>>;
 
 let thumbnailCanvas: HTMLCanvasElement | null = null;
 
@@ -88,13 +91,13 @@ export function rememberFrame(
   time: number,
   poses: Pose[],
 ): Seen[] {
-  const kept = seen.filter((frame) => time - frame.time <= PREROLL_MAX_MS);
-  const lastImage = kept.filter((frame) => frame.image).at(-1);
+  const recent = seen.filter((frame) => time - frame.time <= PREROLL_MAX_MS);
+  const lastImage = recent.filter((frame) => frame.kept).at(-1);
   const image =
     poses.length > 0 && (!lastImage || time - lastImage.time >= SAMPLE_EVERY_MS)
       ? captureFrame(videoFrame)
       : null;
-  return [...kept, { time, poses, image }];
+  return [...recent, { time, poses, kept: image }];
 }
 
 /** Adds the gymnast's poses and skeleton frames from the pre-roll, before the trigger. */
@@ -105,10 +108,10 @@ export function addPreroll(
   poses: Pose[],
   time: number,
 ) {
-  const inVideo = seen.filter((frame) => frame.time >= active.startedAt);
   const { startReason, runUp } = active.recordedWith;
-  const traced = traceBack(
-    inVideo,
+  const traced = tracePreroll(
+    seen,
+    active.startedAt,
     pose,
     poses,
     time,
@@ -118,10 +121,9 @@ export function addPreroll(
   for (const frame of traced) {
     active.frames.push({ time: frame.time - active.startedAt, pose: frame.pose });
   }
-  for (const frame of traced) {
-    const image = inVideo.find((other) => other.time === frame.time)?.image;
+  for (const { time: frameTime, pose: tracked, kept: image } of traced) {
     if (!image) continue;
-    active.samples.push({ time: frame.time - active.startedAt, image, tracked: frame.pose });
+    active.samples.push({ time: frameTime - active.startedAt, image, tracked });
   }
 }
 
