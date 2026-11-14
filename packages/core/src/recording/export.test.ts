@@ -51,6 +51,19 @@ describe('parseExport', () => {
     expect(parseExport(json)?.recordedWith).toBeUndefined();
   });
 
+  it('still reads a clip with a NaN in a frame or its duration, without that frame', () => {
+    const clip: Clip = {
+      ...CLIP,
+      durationMs: NaN,
+      frames: [...CLIP.frames, { time: 40, pose: [{ x: NaN, y: 0.5, visibility: 1 }] }],
+      skeleton: [...CLIP.skeleton, { time: Infinity, pose: [{ x: 0.4, y: 0.5 }] }],
+    };
+    const parsed = parseExport(JSON.parse(JSON.stringify(exportData(clip, 'test-agent'))));
+    expect(parsed?.durationMs).toBe(0);
+    expect(parsed?.frames).toEqual(CLIP.frames);
+    expect(parsed?.skeleton).toEqual(CLIP.skeleton);
+  });
+
   it('refuses other versions and broken data', () => {
     expect(parseExport({ ...exportData(CLIP, 'test-agent'), version: 2 })).toBeNull();
     expect(parseExport({ ...exportData(CLIP, 'test-agent'), zone: null })).toBeNull();

@@ -1,6 +1,6 @@
 import type { Clip } from '@nomol/core/recording/clip';
 import { useEffect, useRef, useState } from 'react';
-import { deleteClip, loadClips } from '../lib/clip-store';
+import { deleteAllClips, deleteClip, loadClips } from '../lib/clip-store';
 import { createSkeletonRefiner, type SkeletonProgress } from '../lib/skeleton';
 
 /**
@@ -63,12 +63,12 @@ export function useClips() {
     return remaining;
   }
 
-  /** One by one, not the whole folder: a recording may be running into it. */
-  function removeAll() {
-    for (const clip of clips) {
-      removedRef.current.add(clip.id);
-      deleteClip(clip.id);
-    }
+  /**
+   * Also leftovers that never became a clip; not the folder of the recording running (`keep`).
+   */
+  function removeAll(keep: string | null) {
+    for (const clip of clips) removedRef.current.add(clip.id);
+    deleteAllClips(keep);
     setClips([]);
   }
 

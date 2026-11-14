@@ -2,7 +2,11 @@ import { posesInArea } from '@nomol/core/detection/camera-frame';
 import type { Pose } from '@nomol/core/detection/pose';
 import { insertFrame, routineRange, type Clip, type ClipFrame } from '@nomol/core/recording/clip';
 import { createTracker, posesFromView, skeletonPasses } from '@nomol/core/skeleton/rotation';
-import { createSkeletonLandmarker, type SkeletonLandmarker } from '@nomol/native-modules';
+import {
+  createSkeletonLandmarker,
+  type SkeletonLandmarker,
+  type StillSize,
+} from '@nomol/native-modules';
 import { finishSkeleton, loadPendingSkeleton, saveSkeleton } from './clip-store';
 
 /** How often the skeleton computed so far is stored, so little is lost when the app closes. */
@@ -59,9 +63,15 @@ export function createSkeletonRefiner() {
     let savedAt = Date.now();
 
     for (const pass of skeletonPasses(samples, routineRange(clip).startMs)) {
-      const size = await target.open(pending.still(pass[0]));
-      // Gymnasts start each pass upright.
-      const next = createTracker(size.width, size.height);
+      // Saved in the background while recording, so some may be missing; `detect` skips those.
+      let size: StillSize | null = null;
+      for (const sample of pass) {
+        size = await target.open(pending.still(sample)).catch(() => null);
+        if (size) break;
+      }
+      // Gymnasts start each pass upright. Without any still nothing is detected in the pass, so
+      // the size doesn't matter.
+      const next = createTracker(size?.width ?? 1, size?.height ?? 1);
       for (const sample of pass) {
         await unpaused;
         if (job.isCancelled()) return;

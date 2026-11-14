@@ -1,6 +1,6 @@
 import z from 'zod';
 import { zoneSchema } from '../settings';
-import type { Clip } from './clip';
+import type { Clip, ClipFrame } from './clip';
 
 /**
  * Bump when the JSON layout changes, so old exports can still be read correctly.
@@ -18,6 +18,23 @@ export function exportBaseName(startedAt: Date): string {
   return `nomol-${date}_${time}`;
 }
 
+/**
+ * JSON turns NaN and Infinity into null, which `parseExport` refuses: one such number would hide
+ * a whole clip stored by the Android app, so frames with one are left out.
+ */
+function finiteFrames(frames: ClipFrame[]): ClipFrame[] {
+  return frames.filter(
+    ({ time, pose }) =>
+      Number.isFinite(time) &&
+      pose.every(
+        ({ x, y, visibility }) =>
+          Number.isFinite(x) &&
+          Number.isFinite(y) &&
+          (visibility === undefined || Number.isFinite(visibility)),
+      ),
+  );
+}
+
 /** Everything needed to replay the detection on the video later, without the video itself. */
 export function exportData(clip: Clip, userAgent: string) {
   return {
@@ -26,12 +43,12 @@ export function exportData(clip: Clip, userAgent: string) {
     startReason: clip.recordedWith?.startReason ?? null,
     runUp: clip.recordedWith?.runUp ?? null,
     startedAt: clip.startedAt.toISOString(),
-    durationMs: clip.durationMs,
+    durationMs: Number.isFinite(clip.durationMs) ? clip.durationMs : 0,
     aspectRatio: clip.aspectRatio,
     zone: clip.zone,
     userAgent,
-    frames: clip.frames,
-    skeleton: clip.skeleton,
+    frames: finiteFrames(clip.frames),
+    skeleton: finiteFrames(clip.skeleton),
   };
 }
 

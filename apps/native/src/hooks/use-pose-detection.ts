@@ -29,9 +29,6 @@ const WHOLE: Zone = { left: 0, top: 0, right: 1, bottom: 1 };
  */
 const STILL_EVERY_MS = 100;
 
-/** Where stills go (null when not recording) and when the last was saved; camera thread only. */
-type Stills = { dir: string | null; last: number };
-
 /** What the frame worklet needs from the screen, written on the JS thread. */
 type Look = {
   /** Where to detect (`detectionArea`), in the picture. */
@@ -76,7 +73,10 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
   const [look] = useState(() =>
     createSynchronizable<Look>({ area: WHOLE, mirrored: false, paused: true }),
   );
-  const [stills] = useState(() => createSynchronizable<Stills>({ dir: null, last: -Infinity }));
+  // Each written by one side only, so neither overwrites the other's change: where stills go
+  // (null when not saving) by the JS thread, when the last was saved by the camera thread.
+  const [stillsDir] = useState(() => createSynchronizable<string | null>(null));
+  const [lastStill] = useState(() => createSynchronizable(-Infinity));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timingsRef = useRef<number[] | null>([]);
@@ -123,11 +123,11 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
         const crop = bufferCrop(area, frame.width, frame.height, { rotation, mirrored });
         // Nanoseconds since boot; MediaPipe and the session work in ms.
         const time = frame.timestamp / 1e6;
-        const { dir, last } = stills.getDirty();
+        const dir = stillsDir.getDirty();
         let still: string | null = null;
-        if (dir !== null && time - last >= STILL_EVERY_MS) {
+        if (dir !== null && time - lastStill.getDirty() >= STILL_EVERY_MS) {
           still = `${dir}/${Math.round(time)}.jpg`;
-          stills.setBlocking({ dir, last: time });
+          lastStill.setBlocking(time);
         }
         const { landmarks, ms } = landmarker.detect(
           frame,
@@ -152,7 +152,7 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
         frame.dispose();
       }
     },
-    [look, stills, landmarker, deliver],
+    [look, stillsDir, lastStill, landmarker, deliver],
   );
 
   const frameOutput = useFrameOutput({
@@ -170,11 +170,11 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
     [look, ready],
   );
 
-  /** While recording, saves a still of a detected frame every `STILL_EVERY_MS` into `dir`. */
-  const saveStills = useCallback(
-    (dir: string | null) => stills.setBlocking({ dir, last: -Infinity }),
-    [stills],
-  );
+  /**
+   * While recording, saves a still of a detected frame every `STILL_EVERY_MS` into `dir`; the
+   * spacing carries on across a change of `dir`.
+   */
+  const saveStills = useCallback((dir: string | null) => stillsDir.setBlocking(dir), [stillsDir]);
 
   return { frameOutput, ready, error, setLook, saveStills };
 }

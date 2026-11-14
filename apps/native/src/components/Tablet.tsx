@@ -9,6 +9,7 @@ import {
 import { coverPose, detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
 import type { Seen } from '@nomol/core/recording/preroll';
 import { createClipRecorder, createStartSound } from '@nomol/native-modules';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { callback } from 'react-native-nitro-modules';
@@ -57,6 +58,9 @@ const DEFAULT_ASPECT = 4 / 3;
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
+
+/** Android's `ActivityInfo.SCREEN_ORIENTATION_LOCKED`: stays as it is now. */
+const SCREEN_ORIENTATION_LOCKED = 14;
 
 /** Phones narrower than this get smaller thumbnails and live picture. */
 const WIDE_SCREEN = 640;
@@ -157,6 +161,19 @@ export default function Tablet() {
     ? { ...livePicture.position, width: liveWidth, height: liveWidth / aspectRatio }
     : fit(screen, aspectRatio);
 
+  // The picture turns with the screen; turned mid-recording, the detected poses would no longer
+  // match the video, whose orientation is fixed when it begins.
+  const isRecording = status === 'recording';
+  useEffect(() => {
+    if (!isRecording) return;
+    ScreenOrientation.lockPlatformAsync({
+      screenOrientationConstantAndroid: SCREEN_ORIENTATION_LOCKED,
+    }).catch(() => {});
+    return () => {
+      ScreenOrientation.unlockAsync().catch(() => {});
+    };
+  }, [isRecording]);
+
   useEffect(() => {
     if (armedAt === null) return;
     const timer = setTimeout(() => setArmedAt(null), ARMED_TIMEOUT_MS);
@@ -196,7 +213,7 @@ export default function Tablet() {
     time: number,
     frameAspect: number,
   ) {
-    const active = startRecording(clipRecorder, time, zone, frameAspect, {
+    const active = startRecording(clipRecorder, time, zone, frameAspect, mirrored, {
       startReason: event.reason,
       runUp,
     });
@@ -455,7 +472,7 @@ export default function Tablet() {
         recording={status === 'recording'}
         clipCount={clips.length}
         onDeleteAll={() => {
-          removeAllClips();
+          removeAllClips(activeRef.current?.folder.id ?? null);
           setCurrentId(null);
           setView('live');
         }}

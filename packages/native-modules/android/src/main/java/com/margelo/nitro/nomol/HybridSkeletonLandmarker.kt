@@ -8,7 +8,6 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.vision.core.RunningMode
-import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.margelo.nitro.core.Promise
 
 /**
@@ -19,14 +18,14 @@ import com.margelo.nitro.core.Promise
 class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
   /** Calls come one after the other from JS, but on whichever background thread is free. */
   private val lock = Any()
-  private var landmarker: PoseLandmarker? = null
+  private var landmarker: Landmarker? = null
   private var still: Bitmap? = null
   private val view = Bitmap.createBitmap(VIEW_SIZE, VIEW_SIZE, Bitmap.Config.ARGB_8888)
   private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
 
   override fun load(): Promise<Unit> =
     Promise.async {
-      val created = createLandmarker("heavy", RunningMode.IMAGE)
+      val created = Landmarker("heavy", RunningMode.IMAGE)
       synchronized(lock) {
         landmarker?.close()
         landmarker = created
@@ -66,7 +65,7 @@ class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
         val canvas = Canvas(view)
         canvas.drawColor(Color.BLACK)
         canvas.drawBitmap(still, matrix, paint)
-        flatten(landmarker.detect(BitmapImageBuilder(view).build()).landmarks())
+        flatten(landmarker.run { it.detect(BitmapImageBuilder(view).build()) }.landmarks())
       }
     }
 

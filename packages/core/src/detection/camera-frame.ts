@@ -91,3 +91,25 @@ export function posesInArea(landmarks: number[], area: Zone): Pose[] {
   }
   return poses;
 }
+
+/**
+ * The landmark at index i of a mirrored pose: in a mirrored picture MediaPipe takes the left side
+ * of the body for the right, so pairs swap (eyes 1–3 with 4–6, then left/right alternating from
+ * the ears on).
+ */
+function mirroredIndex(i: number) {
+  if (i === 0) return 0;
+  if (i <= 6) return i <= 3 ? i + 3 : i - 3;
+  return i % 2 === 1 ? i + 1 : i - 1;
+}
+
+/**
+ * A pose detected in a mirrored picture (front cameras) as it is in the unmirrored one, as the
+ * video is recorded: flipped left to right, with the body's sides swapped back.
+ */
+export function unmirrorPose(pose: Pose): Pose {
+  return pose.map((_landmark, i) => {
+    const landmark = pose[mirroredIndex(i)];
+    return { ...landmark, x: 1 - landmark.x };
+  });
+}

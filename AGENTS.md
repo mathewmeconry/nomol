@@ -104,7 +104,10 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   frames while busy, so the newest one is detected next; results go to the JS thread with
   `scheduleOnRN`, where `step()` runs. The area goes the other way through a worklets
   `Synchronizable`. Frames are 4:3 like the preview (otherwise the two show different parts of
-  the sensor), targeting 1280×960. Frame time is the camera timestamp (ns since boot) in ms. Same heavy
+  the sensor), targeting 1280×960. Frame time is the camera timestamp in ms (the sensor's clock:
+  BOOTTIME on most phones, else MONOTONIC; see recording). If the GPU delegate fails when a
+  landmarker is created or only at its first detection, it is created again on the CPU, once
+  (`Landmarker` in `Landmarkers.kt`, live and replay skeleton). Same heavy
   → lite rule as the web (`measureSpeed` in core). The `.task` models are downloaded from
   storage.googleapis.com by the module's Gradle build into `android/models/` (gitignored) and
   bundled as assets, so the app works offline from the first start; nitrogen's generated code
@@ -118,19 +121,33 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   but one VideoCapture) feeding a MediaCodec H.264 encoder's input surface (12 Mbit/s, no audio,
   a keyframe every 0.5 s: the encoder is asked for one whenever the last is 0.5 s old, since
   encoders count the interval in frames and the camera's frame rate varies). Encoded samples
-  carry the camera's frame timestamps, the clock detection uses, so time 0 is the first written
-  frame's capture time and needs no clock matching. The encoder is suspended
+  carry the frames' capture timestamps, but Camera2 stamps a surface feeding an encoder with
+  MONOTONIC while analysis frames carry the sensor's clock (BOOTTIME on Pixels); the two differ
+  by the time the phone slept since boot. As CameraX's recorder does, the clock of each is
+  taken to be the one whose current time is closer to its first timestamp (`CameraClock.kt`,
+  JVM-tested; logged once at debug level under the tag `NomolRecorder`), and the recorder works
+  in BOOTTIME inside while JS gives and gets frame times, so time 0 is the first written frame's
+  capture time. The encoder is suspended
   (`PARAMETER_KEY_SUSPEND`, frames dropped before encoding) unless recording or buffering.
   While waiting in an automatic mode it buffers the last 3 s in memory (`SampleBuffer.kt`,
   always starting at a keyframe, JVM-tested); an automatic start's video begins at the last
   buffered keyframe at least 1.5 s before the trigger (1.5–2 s), sign and button starts at the
   next keyframe. MediaMuxer writes the MP4 with CameraX's rotation as orientation hint; the clip
   ends at its last frame. Video stabilization is off (it crops, and the video would no longer
-  match the detected frames). Front cameras: the video is not mirrored while the preview and
-  poses are. Built but not yet tried on a phone (November 2026): binding, rotation, keyframe
-  spacing and timestamps after a suspend still need checking on the Pixel 8. While recording, the frame worklet saves a still every 100 ms
-  (`detect(..., stillPath)`: the frame already converted for detection, turned upright, long
-  side 640, JPEG written on a background thread) with the tracked pose, for the replay skeleton
+  match the detected frames). Front cameras: the video is never mirrored while the preview and
+  live poses are, so a clip stores everything as in the video: poses are unmirrored (x flipped
+  and the body's sides swapped back, core's `unmirrorPose`), stills are saved unmirrored and the
+  clip's zone is mirrored; exports then match the video as the web app's do. An encoder error
+  drops the encoder (a clip keeps what it has) and the next start or stop reports it; an encoder
+  that can't be created declines the surface, so the camera still runs. If the camera is set up
+  anew mid-clip (new encoder), the clip ends at the old encoder's last frame and detections
+  after it are dropped. The screen orientation is locked while recording
+  (`expo-screen-orientation`): turned, the poses would no longer match the video, whose
+  orientation is fixed when it begins. Built but not yet tried on a phone (November 2026):
+  binding, rotation, keyframe spacing, the clocks (see logcat) and timestamps after a suspend
+  still need checking on the Pixel 8. While recording, the frame worklet saves a still every 100 ms
+  (`detect(..., stillPath)`: the frame already converted for detection, turned upright but not
+  mirrored, long side 640, JPEG written on a background thread) with the tracked pose, for the replay skeleton
   and the thumbnail (the still nearest the routine's middle). While buffering it keeps the last
   3 s of detections and saves stills into the cache while someone is in the picture; on an
   automatic start the runner is traced back over them (core's `tracePreroll`, as in the web
@@ -153,7 +170,11 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   (`clips/<start ms>/`): `<export name>.mp4`, `<export name>.nomol.txt` (core's `exportData`,
   read back with `parseExport`), `thumbnail.jpg`, `stills/*.jpg` + `samples.json` (+
   `skeleton-done.json`) until the replay skeleton is complete. Kept until
-  deleted (two taps, or all in the settings). Export shares the video and the JSON together via
+  deleted (two taps, or all in the settings: everything under `clips/` except a recording
+  running). A folder without a `.nomol.txt`, or one that isn't JSON, more than 10 minutes after
+  its start is a recording the app was closed during and is deleted on the next start; one in
+  another export format stays. `exportData` leaves out frames with NaN or Infinity, which JSON
+  would turn into null and `parseExport` refuse. Export shares the video and the JSON together via
   `FileShare` (`ACTION_SEND_MULTIPLE` with expo-file-system's content URIs; Expo's and React
   Native's share take one file). Replay (`ClipPlayer.tsx`): expo-video (ExoPlayer, exact seeks,
   `playbackRate`, scrubbing mode while dragging the timeline, a `textureView` so it can sit
@@ -245,7 +266,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 `packages/native-modules/` (Android only): Nitro specs in `src/specs/`, Kotlin in
 `android/src/main/java/com/margelo/nitro/nomol/` (`HybridPoseLandmarker.kt` also saves stills,
 `HybridSkeletonLandmarker.kt` the replay skeleton's views, `Landmarkers.kt` model loading
-shared by both, `HybridClipRecorder.kt` and `SampleBuffer.kt` the recording, `HybridStartSound.kt`,
+shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` the recording,
+`HybridStartSound.kt` (its `ToneGenerator` created on the first beep; a failure only costs the beep),
 `HybridFileShare.kt`), JVM unit tests in `android/src/test/`, model download in
 `android/build.gradle`.
 

@@ -15,19 +15,39 @@ private const val TAG = "NomolPose"
 /** Spotters and waiting gymnasts are often in the picture too. */
 private const val MAX_POSES = 4
 
-/** A pose landmarker on a bundled model (`pose_landmarker_<name>.task`). */
-internal fun createLandmarker(
+/**
+ * A pose landmarker on a bundled model (`pose_landmarker_<name>.task`). The GPU delegate is much
+ * faster but may not work on every phone, failing either when created or only at the first
+ * detection; either way the landmarker is created again on the CPU, once. Not thread-safe.
+ */
+internal class Landmarker(
   name: String,
-  mode: RunningMode,
-): PoseLandmarker {
-  val buffer = readAsset("pose_landmarker_$name.task")
-  // The GPU delegate is much faster but may not start on every phone.
-  return try {
-    createLandmarker(buffer, mode, Delegate.GPU)
-  } catch (e: Exception) {
-    Log.w(TAG, "GPU delegate failed, using CPU", e)
-    createLandmarker(buffer, mode, Delegate.CPU)
-  }
+  private val mode: RunningMode,
+) {
+  private val model = readAsset("pose_landmarker_$name.task")
+  private var delegate = Delegate.GPU
+  private var landmarker =
+    try {
+      createLandmarker(model, mode, Delegate.GPU)
+    } catch (e: Exception) {
+      Log.w(TAG, "GPU delegate failed, using CPU", e)
+      delegate = Delegate.CPU
+      createLandmarker(model, mode, Delegate.CPU)
+    }
+
+  fun <T> run(detect: (PoseLandmarker) -> T): T =
+    try {
+      detect(landmarker)
+    } catch (e: Exception) {
+      if (delegate != Delegate.GPU) throw e
+      Log.w(TAG, "GPU delegate failed while detecting, using CPU", e)
+      landmarker.close()
+      delegate = Delegate.CPU
+      landmarker = createLandmarker(model, mode, Delegate.CPU)
+      detect(landmarker)
+    }
+
+  fun close() = landmarker.close()
 }
 
 private fun createLandmarker(

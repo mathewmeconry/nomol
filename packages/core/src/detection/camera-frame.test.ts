@@ -1,4 +1,6 @@
-import { bufferCrop, cropArea, posesInArea } from './camera-frame';
+import { makePose } from '../tests/poses';
+import { bufferCrop, cropArea, posesInArea, unmirrorPose } from './camera-frame';
+import { LM } from './pose';
 
 describe('bufferCrop', () => {
   // A 4:3 sensor buffer; a phone held upright shows it turned 90° clockwise.
@@ -80,5 +82,34 @@ describe('posesInArea', () => {
     expect(poses[0][0]).toEqual({ x: 0.4, y: 0.4, visibility: 0.9 });
     expect(poses[0][1].y).toBeCloseTo(0.8);
     expect(poses[1][0].x).toBeCloseTo(0.2);
+  });
+});
+
+describe('unmirrorPose', () => {
+  it('turns what MediaPipe sees in a mirrored picture into the person as recorded', () => {
+    // Someone at 0.3 facing the camera looks, mirrored, like a person facing it at 0.7.
+    const recorded = makePose({ x: 0.3, feetY: 0.9 });
+    const seen = makePose({ x: 0.7, feetY: 0.9 });
+    const unmirrored = unmirrorPose(seen);
+    unmirrored.forEach((landmark, i) => {
+      expect(landmark.x).toBeCloseTo(recorded[i].x);
+      expect(landmark.y).toBeCloseTo(recorded[i].y);
+    });
+  });
+
+  it("swaps the body's sides, landmark by landmark", () => {
+    const pose = Array.from({ length: 33 }, (_, i) => ({ x: 0.5, y: 0.5, visibility: i / 100 }));
+    const swapped = unmirrorPose(pose).map((landmark) =>
+      Math.round((landmark.visibility ?? 0) * 100),
+    );
+    expect(swapped[LM.nose]).toBe(LM.nose);
+    expect(swapped[LM.leftEye]).toBe(LM.rightEye);
+    expect(swapped[1]).toBe(4);
+    expect(swapped[6]).toBe(3);
+    expect(swapped[LM.leftEar]).toBe(LM.rightEar);
+    expect(swapped[LM.rightWrist]).toBe(LM.leftWrist);
+    expect(swapped[LM.leftAnkle]).toBe(LM.rightAnkle);
+    expect(swapped[32]).toBe(31);
+    expect(unmirrorPose(unmirrorPose(pose))).toEqual(pose);
   });
 });

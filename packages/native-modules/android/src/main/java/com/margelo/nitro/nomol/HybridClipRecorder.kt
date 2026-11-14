@@ -8,7 +8,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.util.Size
+import android.view.Surface
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
@@ -41,11 +43,15 @@ private const val KEYFRAME_US = 500_000L
 /** Long enough for the automatic start's lead-in of 1.5–3 s (`PREROLL_MAX_MS` in core). */
 private const val BUFFER_US = 3_000_000L
 
+private const val TAG = "NomolRecorder"
+
 /**
  * Records clips with its own H.264 encoder. CameraX allows a single video recording at a time
  * and its recorder can't begin before it is started, so a second Preview use case feeds
- * MediaCodec's input surface instead. Encoder output carries the camera's frame timestamps,
- * the clock detection uses, so a video's time 0 is exactly its first frame's capture time.
+ * MediaCodec's input surface instead. Encoder output carries the camera's capture timestamps,
+ * though not necessarily in the clock of the detected frames ([CameraClock]); inside, all times
+ * are BOOTTIME µs, and JS gets and gives frame times, so a video's time 0 is exactly its first
+ * frame's capture time.
  */
 class HybridClipRecorder : HybridClipRecorderSpec() {
   private val thread = HandlerThread("ClipRecorder").apply { start() }
@@ -60,6 +66,9 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
     var muxer: MediaMuxer? = null
     var track = -1
     var lastUs = 0L
+
+    /** The encoder whose stream the muxer was set up for. */
+    var source: Encoder? = null
   }
 
   /** The encoder of the surface the camera currently delivers to. */
@@ -70,6 +79,9 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
     var running = true
     var lastKeyUs = Long.MIN_VALUE
     var syncRequested = false
+
+    /** The clock of its timestamps, from its first sample. */
+    var clock: Clock? = null
   }
 
   // Everything below is used on `thread` only.
@@ -77,6 +89,9 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
   private var encoder: Encoder? = null
   private var clip: Clip? = null
   private var wantBuffer = false
+
+  /** Why there is no working encoder, reported by the next `start` or `stop`. */
+  private var failure: String? = null
 
   /** Clockwise degrees to turn the video upright, from CameraX. */
   @Volatile private var rotation = 0
@@ -144,10 +159,16 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
         started.reject(Error("Es läuft schon eine Aufnahme."))
         return@post
       }
+      val failure = failure
+      if (encoder == null && failure != null) {
+        started.reject(Error(failure))
+        return@post
+      }
       File(path).parentFile?.mkdirs()
       clip = Clip(path, started)
       updateRunning()
-      for (sample in buffer.takeFrom((fromMs * 1000).toLong())) write(sample)
+      val current = encoder ?: return@post
+      for (sample in buffer.takeFrom(frameToUs(fromMs))) write(sample, current)
     }
     return started
   }
@@ -157,7 +178,7 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
     handler.post {
       try {
         val ended = finishClip()
-        if (ended != null) stopped.resolve(ended) else stopped.reject(Error("Das Video ist leer."))
+        if (ended != null) stopped.resolve(ended) else stopped.reject(Error(failure ?: "Das Video ist leer."))
       } catch (e: Exception) {
         stopped.reject(e)
       }
@@ -187,14 +208,31 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
           setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
       }
-    val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-    val encoder = Encoder(codec)
-    // Callbacks run on `thread`, like everything else here.
-    codec.setCallback(Callback(encoder), handler)
-    codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-    val surface = codec.createInputSurface()
-    codec.start()
+    var codec: MediaCodec? = null
+    val encoder: Encoder
+    val surface: Surface
+    try {
+      val created = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+      codec = created
+      encoder = Encoder(created)
+      // Callbacks run on `thread`, like everything else here.
+      created.setCallback(Callback(encoder), handler)
+      created.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+      surface = created.createInputSurface()
+      created.start()
+    } catch (e: Exception) {
+      Log.w(TAG, "Could not start the encoder", e)
+      codec?.let { runCatching { it.release() } }
+      // Otherwise the camera waits for this surface and shows nothing at all.
+      request.willNotProvideSurface()
+      failEncoder(null, e)
+      return
+    }
+    // Samples of the previous encoder have another stream's settings; a clip being written
+    // ignores the new one's samples and ends at its last frame (`write`).
+    buffer.clear()
     this.encoder = encoder
+    failure = null
     updateRunning()
 
     request.setTransformationInfoListener(executor) { rotation = it.rotationDegrees }
@@ -205,10 +243,27 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
         this.encoder = null
         buffer.clear()
       }
-      codec.stop()
-      codec.release()
+      // A failed encoder may refuse these; it is released either way.
+      runCatching { encoder.codec.stop() }
+      runCatching { encoder.codec.release() }
       surface.release()
     }
+  }
+
+  /**
+   * The encoder can't be used any more. A clip being written keeps what it has and `stop`
+   * finishes it; the error is reported by the next `start` or `stop`.
+   */
+  private fun failEncoder(
+    failed: Encoder?,
+    e: Exception,
+  ) {
+    failure = "Der Video-Encoder ist ausgefallen: ${e.message ?: e.javaClass.simpleName}"
+    if (failed == null || failed !== encoder) return
+    encoder = null
+    buffer.clear()
+    // Not from inside its own callback.
+    handler.post { runCatching { failed.codec.release() } }
   }
 
   private inner class Callback(
@@ -243,11 +298,13 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
       data.position(info.offset)
       data.get(bytes)
       codec.releaseOutputBuffer(index, false)
-      val sample =
-        EncodedSample(bytes, info.presentationTimeUs, info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0)
+      val ptsNs = info.presentationTimeUs * 1000
+      val clock = owner.clock ?: CameraClock.detect(ptsNs, "Encoder").also { owner.clock = it }
+      val timeUs = toBoottime(ptsNs, clock, CameraClock.offsetNs()) / 1000
+      val sample = EncodedSample(bytes, timeUs, info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0)
       keepKeyframesClose(owner, sample)
       if (clip != null) {
-        write(sample)
+        write(sample, owner)
       } else if (wantBuffer) {
         buffer.add(sample)
       }
@@ -257,7 +314,8 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
       codec: MediaCodec,
       e: MediaCodec.CodecException,
     ) {
-      // No more samples come; a clip being written keeps what it has and `stop` finishes it.
+      Log.w(TAG, "Encoder error", e)
+      failEncoder(owner, e)
     }
   }
 
@@ -275,8 +333,18 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
   }
 
   private fun requestKeyframe(encoder: Encoder) {
-    encoder.codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })
+    setParameter(encoder, MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
     encoder.syncRequested = true
+  }
+
+  /** A failed codec refuses parameters; `onError` deals with that, so this mustn't crash the thread. */
+  private fun setParameter(
+    encoder: Encoder,
+    key: String,
+    value: Int,
+  ) {
+    runCatching { encoder.codec.setParameters(Bundle().apply { putInt(key, value) }) }
+      .onFailure { Log.w(TAG, "Could not set $key", it) }
   }
 
   /** The encoder drops camera frames (costs nothing) unless buffering or recording. */
@@ -286,23 +354,32 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
     if (!run) buffer.clear()
     if (run == encoder.running) return
     encoder.running = run
-    encoder.codec.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_SUSPEND, if (run) 0 else 1) })
+    setParameter(encoder, MediaCodec.PARAMETER_KEY_SUSPEND, if (run) 0 else 1)
     // A clip and the buffer can only begin at a keyframe.
     if (run) requestKeyframe(encoder)
   }
 
-  private fun write(sample: EncodedSample) {
+  /** Writes a sample of [from] into the current clip. */
+  private fun write(
+    sample: EncodedSample,
+    from: Encoder,
+  ) {
     val clip = clip ?: return
     var muxer = clip.muxer
     if (muxer == null) {
-      val format = encoder?.format ?: return
+      val format = from.format ?: return
       if (!sample.key) return
       muxer = MediaMuxer(clip.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
       muxer.setOrientationHint(rotation)
       clip.track = muxer.addTrack(format)
       muxer.start()
       clip.muxer = muxer
-      clip.started.resolve(sample.timeUs / 1000.0)
+      clip.source = from
+      clip.started.resolve(usToFrame(sample.timeUs))
+    } else if (from !== clip.source) {
+      // The camera was set up anew mid-clip (other size, new codec config); its samples would
+      // break the file, so the video ends at the old encoder's last frame.
+      return
     }
     val info = MediaCodec.BufferInfo()
     info.set(0, sample.data.size, sample.timeUs, if (sample.key) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
@@ -324,6 +401,15 @@ class HybridClipRecorder : HybridClipRecorderSpec() {
     } finally {
       muxer.release()
     }
-    return clip.lastUs / 1000.0
+    return usToFrame(clip.lastUs)
   }
+
+  /** Before the first detected frame, frame times are taken as BOOTTIME, as on most phones. */
+  private fun frameClock() = CameraClock.frames ?: Clock.BOOTTIME
+
+  /** A frame time in ms, as JS has it, in this recorder's BOOTTIME µs. */
+  private fun frameToUs(ms: Double) = toBoottime((ms * 1e6).toLong(), frameClock(), CameraClock.offsetNs()) / 1000
+
+  /** [frameToUs] reversed. */
+  private fun usToFrame(us: Long) = fromBoottime(us * 1000, frameClock(), CameraClock.offsetNs()) / 1e6
 }

@@ -59,7 +59,28 @@ export async function saveClip(folder: ClipFolder, clip: Clip, samples: Sample[]
   await folder.samples.write(JSON.stringify(samples));
 }
 
-/** All stored clips, newest first. Folders without a readable video and JSON are skipped. */
+/**
+ * A folder without its JSON this long after its start never became a clip (the app was closed
+ * mid-recording) and is deleted. Far longer than storing a clip takes.
+ */
+const LEFTOVER_AFTER_MS = 10 * 60_000;
+
+/** Deletes `dir` if it is an old leftover of a recording that was never stored. */
+function deleteLeftover(dir: Directory) {
+  const startedAt = Number(dir.name);
+  if (!Number.isFinite(startedAt) || Date.now() - startedAt <= LEFTOVER_AFTER_MS) return;
+  try {
+    dir.delete();
+  } catch (_error) {
+    // Tried again on the next start; the clips must load regardless.
+  }
+}
+
+/**
+ * All stored clips, newest first. Folders without a readable video and JSON are skipped, and
+ * deleted when there is no JSON or it isn't JSON at all: one in another format (e.g. a later
+ * export version) stays.
+ */
 export async function loadClips(): Promise<Clip[]> {
   if (!CLIPS.exists) return [];
   const clips = await Promise.all(
@@ -68,9 +89,23 @@ export async function loadClips(): Promise<Clip[]> {
       const files = dir.list().filter((entry) => entry instanceof File);
       const video = files.find((file) => file.name.endsWith('.mp4'));
       const data = files.find((file) => file.name.endsWith('.nomol.txt'));
-      if (!video || !data) return null;
+      if (!data) {
+        deleteLeftover(dir);
+        return null;
+      }
+      if (!video) return null;
+      const text = await data.text().catch(() => null);
+      if (text === null) return null;
+      let raw: unknown;
       try {
-        const stored = parseExport(JSON.parse(await data.text()));
+        raw = JSON.parse(text);
+      } catch (_error) {
+        // Cut off while being written.
+        deleteLeftover(dir);
+        return null;
+      }
+      try {
+        const stored = parseExport(raw);
         if (!stored) return null;
         const thumbnail = new File(dir, 'thumbnail.jpg');
         return {
@@ -175,6 +210,14 @@ export async function finishSkeleton(id: string, skeleton: ClipFrame[]) {
 export function deleteClip(id: string) {
   const dir = new Directory(CLIPS, id);
   if (dir.exists) dir.delete();
+}
+
+/** Everything under `clips/` except the folder `keep` (a recording running into it). */
+export function deleteAllClips(keep: string | null) {
+  if (!CLIPS.exists) return;
+  for (const entry of CLIPS.list()) {
+    if (entry.name !== keep) entry.delete();
+  }
 }
 
 /** Video and body points through the share sheet, as `.mp4` and `.nomol.txt`. */

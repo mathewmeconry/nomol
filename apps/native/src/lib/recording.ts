@@ -1,3 +1,4 @@
+import { unmirrorPose } from '@nomol/core/detection/camera-frame';
 import type { Pose } from '@nomol/core/detection/pose';
 import type { Zone } from '@nomol/core/detection/zone';
 import {
@@ -21,7 +22,11 @@ const PREROLL_MS = 1500;
 /** Stills saved while waiting for an automatic start; those of the runner move into the clip. */
 const PREROLL_STILLS = new Directory(Paths.cache, 'preroll');
 
-/** Everything gathered while recording. Times are camera times until the clip is made. */
+/**
+ * Everything gathered while recording. Times are camera times until the clip is made. Poses and
+ * the zone are as in the video, which is never mirrored, while the live picture of a front
+ * camera is (as are the poses detected in it).
+ */
 export type ActiveRecording = {
   recorder: ClipRecorder;
   folder: ClipFolder;
@@ -33,17 +38,20 @@ export type ActiveRecording = {
   zone: Zone;
   aspectRatio: number;
   recordedWith: RecordedWith;
+  /** The live picture and its poses are mirrored. */
+  mirrored: boolean;
 };
 
 /**
  * Starts a clip at the frame detected at `time`. An automatic start's video begins before it,
- * from the frames `recorder` kept while buffering.
+ * from the frames `recorder` kept while buffering. `zone` is as in the live picture.
  */
 export function startRecording(
   recorder: ClipRecorder,
   time: number,
   zone: Zone,
   aspectRatio: number,
+  mirrored: boolean,
   start: Omit<RecordedWith, 'appVersion'>,
 ): ActiveRecording {
   const startedDate = new Date();
@@ -59,10 +67,16 @@ export function startRecording(
     started,
     frames: [],
     samples: [],
-    zone,
+    zone: mirrored ? { ...zone, left: 1 - zone.right, right: 1 - zone.left } : zone,
     aspectRatio,
     recordedWith: { appVersion: APP_VERSION, ...start },
+    mirrored,
   };
+}
+
+/** A live pose as in the video. */
+function asRecorded(active: ActiveRecording, pose: Pose): Pose {
+  return active.mirrored ? unmirrorPose(pose) : pose;
 }
 
 /** Where the frame worklet saves stills while waiting for an automatic start; emptied. */
@@ -117,11 +131,12 @@ export function addPreroll(
   );
   active.folder.stills.create({ intermediates: true, idempotent: true });
   for (const frame of traced) {
-    active.frames.push({ time: frame.time, pose: frame.pose });
+    const recorded = asRecorded(active, frame.pose);
+    active.frames.push({ time: frame.time, pose: recorded });
     if (!frame.kept) continue;
     try {
       new File(PREROLL_STILLS, frame.kept).move(active.folder.stills);
-      active.samples.push({ time: frame.time, file: frame.kept, tracked: frame.pose });
+      active.samples.push({ time: frame.time, file: frame.kept, tracked: recorded });
     } catch (_error) {
       // Not written yet; the skeleton interpolates over the gap.
     }
@@ -147,10 +162,11 @@ export function recordFrame(
   pose: Pose | null,
   still: string | null,
 ) {
-  if (pose) active.frames.push({ time, pose });
+  const recorded = pose && asRecorded(active, pose);
+  if (recorded) active.frames.push({ time, pose: recorded });
   // Frames detected around the start may have saved theirs for the pre-roll instead.
   if (still?.startsWith(stillsPath(active))) {
-    active.samples.push({ time, file: fileName(still), tracked: pose });
+    active.samples.push({ time, file: fileName(still), tracked: recorded });
   }
 }
 
@@ -168,9 +184,12 @@ export async function finishRecording(active: ActiveRecording): Promise<Clip> {
       ...item,
       time: item.time - startedAt,
     });
-    const frames = active.frames.filter((frame) => frame.time >= startedAt).map(relative);
+    // The video may end before the last detection (e.g. the camera was set up anew).
+    const frames = active.frames
+      .filter((frame) => frame.time >= startedAt && frame.time <= endedAt)
+      .map(relative);
     // Before time 0 too: the skeleton of the first moments may still use them.
-    const samples = active.samples.map(relative);
+    const samples = active.samples.filter((sample) => sample.time <= endedAt).map(relative);
     const durationMs = Math.max(0, endedAt - startedAt);
     const routine = routineRange({ ...active, frames, durationMs });
     const middle = (routine.startMs + routine.endMs) / 2;
