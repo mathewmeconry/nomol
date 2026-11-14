@@ -118,10 +118,14 @@ export default function Tablet() {
   const coveredRef = useRef<Zone | null>(null);
   const clipStripScrollRef = useRef(0);
 
-  const device =
+  const found =
     devices.find((d) => d.id === cameraId) ??
     devices.find((d) => d.position === 'back') ??
     devices[0];
+  // The list is reported again with new objects once CameraX has checked which cameras are
+  // there; a new object for the same camera would set the camera up anew.
+  const [device, setDevice] = useState(found);
+  if (found?.id !== device?.id) setDevice(found);
   // Phones often show their lenses as one back camera; zooming below 1× switches to the
   // ultra-wide lens.
   const wideZoom = device && device.minZoom < 1 ? device.minZoom : undefined;
@@ -136,13 +140,21 @@ export default function Tablet() {
   useCamera({
     isActive: device !== undefined,
     device: device ?? 'back',
-    outputs: [previewOutput, detection.frameOutput, clipOutput],
+    // Two full-size Previews and the analysis stream can't run together (the Pixel 8 allows
+    // Preview + VGA Preview + YUV): CameraX gives the first output the larger size, and the
+    // clip matters more than the picture on screen.
+    outputs: [clipOutput, previewOutput, detection.frameOutput],
     // Stabilization crops the video, which then no longer matches the detected frames.
     constraints: [{ videoStabilizationMode: 'off' }],
     // The picture turns with the screen, so the zone stays where the coach drew it.
     orientationSource: 'interface',
     zoom: wide && wideZoom !== undefined ? wideZoom : 1,
-    onError: (e) => setError(e.message),
+    onError: (e) => {
+      // A zoom sent while the camera is being set up anew is cancelled; the new setup applies
+      // the zoom itself.
+      if (e.message.includes('Camera is not active')) return;
+      setError(e.message);
+    },
   });
 
   const portrait = screen.height > screen.width;

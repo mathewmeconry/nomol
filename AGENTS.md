@@ -118,7 +118,13 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   custom VisionCamera camera output (`NativeCameraOutput`; Nitro can't yet extend
   `CameraOutput` across modules, so it is a property, like VisionCamera's barcode scanner)
   whose use case is a second CameraX `Preview` (4:3, 1440×1080, CameraX allows several Previews
-  but one VideoCapture) feeding a MediaCodec H.264 encoder's input surface (12 Mbit/s, no audio,
+  but one VideoCapture). Two Previews and the analysis stream only run together with one
+  Preview at VGA (the Pixel 8 guarantees PRIV preview + PRIV VGA + YUV maximum, CameraX's
+  `ExtraSupportedSurfaceCombinationsQuirk`), and CameraX gives the larger size to the output
+  listed first; so the clip output comes first and the picture on screen is 640×480 (soft, but
+  the clip and the detected frames keep their size). Sharing one stream between screen and
+  encoder would need a CameraX effect, which VisionCamera's session doesn't take. The Preview
+  feeds a MediaCodec H.264 encoder's input surface (12 Mbit/s, no audio,
   a keyframe every 0.5 s: the encoder is asked for one whenever the last is 0.5 s old, since
   encoders count the interval in frames and the camera's frame rate varies). Encoded samples
   carry the frames' capture timestamps, but Camera2 stamps a surface feeding an encoder with
@@ -143,9 +149,11 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   anew mid-clip (new encoder), the clip ends at the old encoder's last frame and detections
   after it are dropped. The screen orientation is locked while recording
   (`expo-screen-orientation`): turned, the poses would no longer match the video, whose
-  orientation is fixed when it begins. Built but not yet tried on a phone (November 2026):
-  binding, rotation, keyframe spacing, the clocks (see logcat) and timestamps after a suspend
-  still need checking on the Pixel 8. While recording, the frame worklet saves a still every 100 ms
+  orientation is fixed when it begins. Checked on the Pixel 8 (November 2026, front camera,
+  button start, 38.5 s): 1440×1080 H.264 with rotation 90, ~28 fps, no gap over 46 ms,
+  keyframes every 0.50–0.58 s, duration as in the export; poses unmirrored (head and sides
+  match the video); detected frames in BOOTTIME, the encoder in MONOTONIC. Timestamps after a
+  suspend and automatic starts still need a person moving in front of it. While recording, the frame worklet saves a still every 100 ms
   (`detect(..., stillPath)`: the frame already converted for detection, turned upright but not
   mirrored, long side 640, JPEG written on a background thread) with the tracked pose, for the replay skeleton
   and the thumbnail (the still nearest the routine's middle). While buffering it keeps the last
@@ -420,8 +428,18 @@ Keep such files and scripts outside the repo. Check layouts at phone sizes (e.g.
   `adb shell pm grant ch.nomol.app android.permission.CAMERA`,
   `adb shell monkey -p ch.nomol.app 1` to launch, `adb exec-out screencap -p > shot.png` for
   screenshots (keep them outside the repo). Don't touch other apps or the phone's settings.
-  Clips live in the app's private storage (`run-as ch.nomol.app ls files/clips` on the
-  debug-signed APK).
+  The phone locks 30 s after the app leaves the foreground (force-stop, install), and only the
+  owner can unlock it. Installing while the app is open makes Android 16 start the activity
+  anew (`PackageUpdateActivity`, `FLAG_ACTIVITY_CLEAR_TASK`): the old screen goes away after
+  the new one is up in the same JS runtime, so `App.tsx` lets only the newest screen hold the
+  camera (VisionCamera's teardown unbinds all cameras) and keep the screen on.
+- Release builds aren't minified (`enableMinifyInReleaseBuilds: false`): R8 broke MediaPipe,
+  which reads protobuf fields and its logger's callers by name. Nitro creates the Hybrid
+  classes by name from C++, so they carry `@Keep @DoNotStrip` (as VisionCamera's do) should
+  minifying come back.
+  Clips live in the app's private storage; `run-as ch.nomol.app ls files/clips` needs a
+  debuggable APK (add `debuggable true` to the release build type in the generated
+  `android/app/build.gradle` for a local test build only; it makes the app slower).
 - Typecheck and lint cover the native app; there are no tests for it yet. Logic worth testing
   belongs in core. The Kotlin module's pure parts have JVM tests, not part of the root checks:
   in `apps/native/android` (after a build), `./gradlew :nomol_native-modules:testDebugUnitTest`
