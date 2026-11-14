@@ -21,7 +21,8 @@ export default function StartHint({
                 : `Automatisch: Anlauf von ${runUp === 'left' ? 'links' : 'rechts'} startet die Aufnahme`}
             </Text>
             <Text style={styles.detail}>
-              Startzone über Gerät und Landung · endet beim Weggehen
+              Startzone über Gerät und Landung, unten bis zu den Füssen auf der Landematte · endet
+              beim Weggehen
             </Text>
           </>
         ) : (
