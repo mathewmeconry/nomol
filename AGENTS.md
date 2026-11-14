@@ -288,7 +288,10 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   `theme.ts` shared colours and the floating style.
 - `src/hooks/`: `use-pose-detection.ts` frame output, the frame worklet (detection and stills),
   model loading and the lite fallback; `use-clips.ts` the clip list and background skeleton;
-  `use-drag-spot.ts` the movable live picture.
+  `use-drag-spot.ts` the movable live picture; `use-app-active.ts` whether the app is in front:
+  the camera is stopped otherwise (VisionCamera only pauses its lifecycle, Android takes the
+  camera away, and after a while CameraX stayed in an error with a red banner) and opened anew
+  on return, which also clears a camera error.
 - `src/lib/`: `settings.ts` settings storage, `recording.ts` starting and finishing clips and
   the pre-roll's poses and stills,
   `clip-store.ts` clip folders, stored skeleton progress and export, `skeleton.ts` the replay

@@ -19,6 +19,7 @@ import {
   useCameraDevices,
   usePreviewOutput,
 } from 'react-native-vision-camera';
+import { useAppActive } from '../hooks/use-app-active';
 import { useClips } from '../hooks/use-clips';
 import { useDragSpot } from '../hooks/use-drag-spot';
 import { usePoseDetection, type Detected } from '../hooks/use-pose-detection';
@@ -140,8 +141,12 @@ export default function Tablet() {
   const [clipRecorder] = useState(createClipRecorder);
   // Read once: each read of the property gives a new JS object.
   const [clipOutput] = useState(() => clipRecorder.output);
+  const appActive = useAppActive();
   useCamera({
-    isActive: device !== undefined,
+    // Stopped in the background: VisionCamera only pauses its lifecycle there, Android then takes
+    // the camera away, and after a while CameraX was left with an error it doesn't recover from.
+    // Started again on return, the camera is opened anew.
+    isActive: device !== undefined && appActive,
     device: device ?? 'back',
     // Two full-size Previews and the analysis stream can't run together (the Pixel 8 allows
     // Preview + VGA Preview + YUV): CameraX gives the first output the larger size, and the
@@ -152,6 +157,7 @@ export default function Tablet() {
     // The picture turns with the screen, so the zone stays where the coach drew it.
     orientationSource: 'interface',
     zoom: wide && wideZoom !== undefined ? wideZoom : 1,
+    onStarted: () => setError(null),
     onError: (e) => {
       // A zoom sent while the camera is being set up anew is cancelled; the new setup applies
       // the zoom itself.
