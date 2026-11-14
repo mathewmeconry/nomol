@@ -1,24 +1,11 @@
 import { download } from '~/lib/download';
+import { measureSpeed } from '@nomol/core/detection/model-speed';
 import type { Pose } from '@nomol/core/detection/pose';
 import type { DetectRequest, DetectResponse } from './pose.worker';
 import type { Zone } from '@nomol/core/detection/zone';
 
 const modelUrl = (size: 'heavy' | 'lite') =>
   `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${size}/float16/latest/pose_landmarker_${size}.task`;
-
-/**
- * The heavy model is preferred: on a handstand recording it found the gymnast in every frame
- * where lite lost them in a fifth, and got upside-down poses right more often. It is ~3.5×
- * slower, so on devices where it takes longer than this per frame, lite takes over. Slower than
- * that, the sign and tracking get sluggish, and the automatic start missed runs below ~5
- * detections per second.
- */
-const SLOW_MS = 100;
-/**
- * Heavy is measured over this much detection time (median), again and again: phones slow down
- * as they heat up. A Pixel 8 took 25 ms per frame at first and 100–300 ms after ~45 minutes.
- */
-const MEASURE_MS = 3000;
 
 export type PoseDetector = {
   /**
@@ -71,11 +58,9 @@ export async function createPoseDetector(
 
   function measure(ms: number) {
     if (!measuring) return;
-    timings.push(ms);
-    if (timings.reduce((sum, value) => sum + value, 0) < MEASURE_MS) return;
-    const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
-    timings = [];
-    if (median <= SLOW_MS) return;
+    const result = measureSpeed(timings, ms);
+    timings = result.timings;
+    if (!result.slow) return;
     measuring = false;
     void download(modelUrl('lite'))
       .then((lite) => ask({ id: nextId++, type: 'load', model: lite }, [lite.buffer]))

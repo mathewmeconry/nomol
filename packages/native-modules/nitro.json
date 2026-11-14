@@ -1,0 +1,26 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": ["nomol"],
+  "ios": {
+    "iosModuleName": "NomolNative"
+  },
+  "android": {
+    "androidNamespace": ["nomol"],
+    "androidCxxLibName": "NomolNative"
+  },
+  "autolinking": {
+    "PoseLandmarker": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridPoseLandmarker"
+      }
+    },
+    "StartSound": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridStartSound"
+      }
+    }
+  },
+  "ignorePaths": ["**/node_modules"]
+}

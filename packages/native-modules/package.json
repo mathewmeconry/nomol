@@ -1,0 +1,20 @@
+{
+  "name": "@nomol/native-modules",
+  "private": true,
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "scripts": {
+    "specs": "nitrogen",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "nitrogen": "0.37.2",
+    "react-native-nitro-modules": "^0.37.2",
+    "react-native-vision-camera": "5.2.4",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react-native-nitro-modules": "*",
+    "react-native-vision-camera": "*"
+  }
+}

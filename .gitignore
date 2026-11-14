@@ -19,6 +19,12 @@ coverage/
 /apps/native/android/
 /apps/native/ios/
 .expo/
+# Native module: nitrogen's code is generated before each build, the MediaPipe models (~36 MB)
+# are downloaded by it
+/packages/native-modules/nitrogen/
+/packages/native-modules/android/build/
+/packages/native-modules/android/.cxx/
+/packages/native-modules/android/models/
 *.apk
 *.aab
 

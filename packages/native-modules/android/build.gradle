@@ -1,0 +1,122 @@
+// Set up like VisionCamera's own plugins (react-native-vision-camera-barcode-scanner), which
+// nitrogen's generated files expect.
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+apply from: "../nitrogen/generated/android/NomolNative+autolinking.gradle"
+
+if (isNewArchitectureEnabled()) {
+  apply plugin: "com.facebook.react"
+}
+
+def getExtOrDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["NomolNative_" + name]
+}
+
+def getExtOrIntegerDefault(name) {
+  return getExtOrDefault(name).toInteger()
+}
+
+// MediaPipe's pose models, the same files the web app loads. Downloaded once when building and
+// bundled as assets, so the app detects without internet from the first start.
+def modelsDir = file("models")
+// No declared outputs: Gradle would then demand that every task reading the assets (lint too)
+// depends on this one. It skips files it already has.
+def downloadPoseModels = tasks.register("downloadPoseModels") {
+  doLast {
+    ["heavy", "lite"].each { size ->
+      def model = new File(modelsDir, "pose_landmarker_${size}.task")
+      if (model.exists()) return
+      modelsDir.mkdirs()
+      def part = new File(modelsDir, "${model.name}.part")
+      def url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${size}/float16/latest/pose_landmarker_${size}.task"
+      new URL(url).withInputStream { input -> part.withOutputStream { it << input } }
+      part.renameTo(model)
+    }
+  }
+}
+tasks.configureEach { task ->
+  if (task.name.startsWith("merge") && task.name.endsWith("Assets")) task.dependsOn(downloadPoseModels)
+}
+
+android {
+  namespace "com.margelo.nitro.nomol"
+
+  ndkVersion getExtOrDefault("ndkVersion")
+  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+
+    externalNativeBuild {
+      cmake {
+        cppFlags "-frtti -fexceptions -Wall -Wextra -fstack-protector-all"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        abiFilters (*reactNativeArchitectures())
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    excludes = [
+      "META-INF",
+      "META-INF/**",
+      "**/libc++_shared.so",
+      "**/libNitroModules.so",
+      "**/libfbjni.so",
+      "**/libjsi.so",
+      "**/libfolly_json.so",
+      "**/libfolly_runtime.so",
+      "**/libglog.so",
+      "**/libhermes.so",
+      "**/libhermes-executor-debug.so",
+      "**/libhermes_executor.so",
+      "**/libreactnative.so",
+      "**/libreactnativejni.so",
+      "**/libturbomodulejsijni.so",
+      "**/libreact_nativemodule_core.so",
+      "**/libjscexecutor.so",
+      "**/libVisionCamera.so"
+    ]
+  }
+
+  buildFeatures {
+    buildConfig true
+    prefab true
+  }
+
+  sourceSets {
+    main {
+      assets.srcDirs += [modelsDir]
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-native:+"
+  implementation "androidx.camera:camera-core:1.7.0-alpha03" // VisionCamera's version
+  implementation "com.google.mediapipe:tasks-vision:1.2.3"
+  implementation project(":react-native-nitro-modules")
+  implementation project(":react-native-vision-camera")
+}

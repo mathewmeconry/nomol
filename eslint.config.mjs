@@ -66,8 +66,8 @@ export default [
     },
   },
   {
-    // Expo config plugins are loaded by Node as CommonJS.
-    files: ['apps/native/plugins/**/*.js'],
+    // Expo config plugins and React Native's autolinking config are loaded by Node as CommonJS.
+    files: ['apps/native/plugins/**/*.js', 'packages/native-modules/react-native.config.js'],
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

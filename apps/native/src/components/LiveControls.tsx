@@ -12,33 +12,69 @@ const START_MODES = [
   { value: 'any', label: 'Auto bei Tempo' },
 ] as const;
 
+/** `loading` until the pose model is ready; the others as in the web app. */
+export type Status = 'loading' | 'idle' | 'sign' | 'armed' | 'recording';
+
+const STATUS_TEXT: Record<Status, string> = {
+  loading: 'Erkennung startet …',
+  idle: 'Bereit',
+  sign: 'Zeichen erkannt …',
+  armed: 'Warte auf Person in der Startzone',
+  recording: 'Aufnahme läuft',
+};
+
+const STATUS_COLOR: Record<Status, string> = {
+  loading: colors.muted,
+  idle: colors.emerald,
+  sign: colors.amber,
+  armed: colors.amber,
+  recording: colors.red,
+};
+
 type Props = {
+  status: Status;
   runUp: RunUp | null;
   onRunUp: (runUp: RunUp | null) => void;
   onEditZone: () => void;
   onSettings: () => void;
+  armed: boolean;
+  onArm: (armed: boolean) => void;
+  onStop: () => void;
 };
 
 /**
  * The bar over the live picture. One wrapping row, so the two groups stack instead of
- * overlapping on narrow phones. Recording needs detection, which this app doesn't have yet, so
- * the status says so and the record button is disabled.
+ * overlapping on narrow phones.
  */
-export default function LiveControls({ runUp, onRunUp, onEditZone, onSettings }: Props) {
+export default function LiveControls({
+  status,
+  runUp,
+  onRunUp,
+  onEditZone,
+  onSettings,
+  armed,
+  onArm,
+  onStop,
+}: Props) {
   const [choosingMode, setChoosingMode] = useState(false);
   const mode = START_MODES.find((m) => m.value === (runUp ?? 'sign')) ?? START_MODES[0];
+  const recording = status === 'recording';
+  const canArm = status !== 'loading';
 
   return (
     <View style={styles.bar} pointerEvents="box-none">
       <View style={shared.floating}>
-        <View style={[styles.dot, { backgroundColor: colors.muted }]} />
-        <Text style={[shared.floatingText, { color: colors.muted }]}>Vorschau ohne Erkennung</Text>
+        <View style={[styles.dot, { backgroundColor: STATUS_COLOR[status] }]} />
+        <Text style={[shared.floatingText, { color: STATUS_COLOR[status] }]}>
+          {STATUS_TEXT[status]}
+        </Text>
       </View>
 
       <View style={styles.group}>
         <Pressable
-          style={shared.floating}
+          style={[shared.floating, recording && shared.disabled]}
           accessibilityLabel="Start"
+          disabled={recording}
           onPress={() => setChoosingMode(true)}
         >
           <MaterialCommunityIcons
@@ -48,7 +84,11 @@ export default function LiveControls({ runUp, onRunUp, onEditZone, onSettings }:
           />
           <Text style={[shared.floatingText, runUp && { color: colors.sky }]}>{mode.label}</Text>
         </Pressable>
-        <Pressable style={shared.floating} onPress={onEditZone}>
+        <Pressable
+          style={[shared.floating, recording && shared.disabled]}
+          disabled={recording}
+          onPress={onEditZone}
+        >
           <MaterialCommunityIcons name="selection" size={16} color={colors.text} />
           <Text style={shared.floatingText}>Startzone</Text>
         </Pressable>
@@ -59,13 +99,33 @@ export default function LiveControls({ runUp, onRunUp, onEditZone, onSettings }:
         >
           <MaterialCommunityIcons name="cog" size={18} color={colors.text} />
         </Pressable>
-        <View
-          style={[shared.floating, styles.icon, styles.record, shared.disabled]}
-          accessibilityLabel="Aufnahme starten"
-          accessibilityState={{ disabled: true }}
-        >
-          <MaterialCommunityIcons name="circle" size={14} color={colors.text} />
-        </View>
+        {recording ? (
+          <Pressable
+            style={[shared.floating, styles.icon, styles.record]}
+            accessibilityLabel="Aufnahme stoppen"
+            onPress={onStop}
+          >
+            <MaterialCommunityIcons name="square" size={14} color={colors.text} />
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[
+              shared.floating,
+              styles.icon,
+              !armed && styles.record,
+              !canArm && shared.disabled,
+            ]}
+            accessibilityLabel={armed ? 'Abbrechen' : 'Aufnahme starten'}
+            disabled={!canArm}
+            onPress={() => onArm(!armed)}
+          >
+            <MaterialCommunityIcons
+              name={armed ? 'close' : 'circle'}
+              size={armed ? 18 : 14}
+              color={colors.text}
+            />
+          </Pressable>
+        )}
       </View>
 
       <Modal
