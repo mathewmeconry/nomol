@@ -50,6 +50,7 @@ import LiveControls, { type Status } from './LiveControls';
 import PersonBox from './PersonBox';
 import Settings from './Settings';
 import StartHint from './StartHint';
+import StartSign from './StartSign';
 import { colors, type Frame } from './theme';
 import ZoneEditor from './ZoneEditor';
 
@@ -383,6 +384,9 @@ export default function Tablet() {
           >
             <Text style={styles.zoneLabel}>STARTZONE</Text>
           </View>
+        )}
+        {!editingZone && status !== 'recording' && runUp === null && (
+          <StartSign zone={zone} width={picture.width} height={picture.height} />
         )}
         {!editingZone &&
           boxes.poses.map((pose, i) => (

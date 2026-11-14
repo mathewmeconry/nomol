@@ -1,6 +1,7 @@
 import { boundingBox, type Pose } from '@nomol/core/detection/pose';
 import type { Zone } from '@nomol/core/detection/zone';
 import { skeletonLines } from '@nomol/core/skeleton/lines';
+import { startFigure } from '@nomol/core/start-figure';
 
 /**
  * Resizes the canvas to its displayed size (sharp on high-DPI tablets) and clears it.
@@ -64,28 +65,7 @@ export function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, w: number, h
   ctx.fillText('STARTZONE', x + 4, y - 4);
 }
 
-/** One loop of the start-sign animation: arms down, raise, hold crossed, lower. */
-const SIGN_LOOP_MS = 3200;
-
-/**
- * Elbow and wrist of the figure's right arm (x from the body's middle, y up from the feet, in
- * body heights). Crossed: elbows beside the head, forearms crossing near their middle above it.
- * The arms move straight between the two, in front of the body, so the figure stays narrow.
- */
-const ARMS_DOWN = { elbow: { x: 0.14, y: 0.6 }, wrist: { x: 0.16, y: 0.36 } };
-const ARMS_CROSSED = { elbow: { x: 0.13, y: 0.96 }, wrist: { x: -0.1, y: 1.1 } };
-
-/** How far the arms are raised (0 down, 1 crossed) at `timeMs`, eased. */
-function raised(timeMs: number) {
-  const t = timeMs % SIGN_LOOP_MS;
-  const u = t < 600 ? 0 : t < 1300 ? (t - 600) / 700 : t < 2800 ? 1 : 1 - (t - 2800) / 400;
-  return u * u * (3 - 2 * u);
-}
-
-/**
- * Faint stick figure standing in the middle of the start zone, showing the start sign: arms
- * raised until the forearms cross in an X just above the head. Animated by `timeMs`.
- */
+/** The start-sign figure (core's `startFigure`) in the start zone, animated by `timeMs`. */
 export function drawStartSign(
   ctx: CanvasRenderingContext2D,
   zone: Zone,
@@ -93,48 +73,20 @@ export function drawStartSign(
   h: number,
   timeMs: number,
 ) {
-  const zoneWidth = (zone.right - zone.left) * w;
-  const zoneHeight = (zone.bottom - zone.top) * h;
-  // Height of the body; raised arms add ~12 % on top, the figure is never wider than ~0.35×.
-  const size = Math.min((zoneHeight * 0.92) / 1.12, (zoneWidth * 0.9) / 0.35);
-  if (size < 30) return;
-  const centerX = ((zone.left + zone.right) / 2) * w;
-  const feetY = zone.bottom * h - zoneHeight * 0.02;
-  const at = (dx: number, dy: number): [number, number] => [centerX + dx * size, feetY - dy * size];
-
-  const u = raised(timeMs);
-  const between = (from: number, to: number) => from + (to - from) * u;
-  /** Shoulder → elbow → wrist; `side` 1 for the image right, -1 mirrors it. */
-  function arm(side: 1 | -1): [number, number][] {
-    const { elbow: down, wrist: downWrist } = ARMS_DOWN;
-    const { elbow: up, wrist: upWrist } = ARMS_CROSSED;
-    return [
-      at(0.11 * side, 0.78),
-      at(between(down.x, up.x) * side, between(down.y, up.y)),
-      at(between(downWrist.x, upWrist.x) * side, between(downWrist.y, upWrist.y)),
-    ];
-  }
-
-  const strokes: [number, number][][] = [
-    [at(-0.1, 0), at(-0.06, 0.25), at(0, 0.48), at(0.06, 0.25), at(0.1, 0)], // legs
-    [at(0, 0.48), at(0, 0.8)], // body
-    [at(-0.11, 0.78), at(0.11, 0.78)], // shoulders
-    arm(1),
-    arm(-1),
-  ];
+  const shape = startFigure(zone, w, h, timeMs);
+  if (!shape) return;
   // One path, stroked once: separate translucent strokes would stack up where they overlap and
   // show the joints as darker blobs.
   const figure = new Path2D();
-  for (const points of strokes) {
-    figure.moveTo(...points[0]);
-    for (const point of points.slice(1)) figure.lineTo(...point);
+  for (const [first, ...rest] of shape.strokes) {
+    figure.moveTo(first!.x, first!.y);
+    for (const point of rest) figure.lineTo(point.x, point.y);
   }
-  const [headX, headY] = at(0, 0.88);
-  const headRadius = size * 0.07;
-  figure.moveTo(headX + headRadius, headY);
-  figure.arc(headX, headY, headRadius, 0, Math.PI * 2);
+  const { head } = shape;
+  figure.moveTo(head.x + head.radius, head.y);
+  figure.arc(head.x, head.y, head.radius, 0, Math.PI * 2);
 
-  const width = Math.max(2, size * 0.018);
+  const width = shape.lineWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   // Faint, so the gymnast standing in the zone stays visible through it; a light dark outline
