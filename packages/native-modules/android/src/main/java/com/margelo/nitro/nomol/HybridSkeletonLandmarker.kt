@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import androidx.annotation.Keep
+import com.facebook.proguard.annotations.DoNotStrip
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.margelo.nitro.core.Promise
@@ -15,6 +17,8 @@ import com.margelo.nitro.core.Promise
  * of a still, like the web app's skeleton worker draws it on a canvas. Runs on Nitro's background
  * threads; which views to try is decided in core.
  */
+@Keep
+@DoNotStrip
 class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
   /** Calls come one after the other from JS, but on whichever background thread is free. */
   private val lock = Any()

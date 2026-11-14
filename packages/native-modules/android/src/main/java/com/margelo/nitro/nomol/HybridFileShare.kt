@@ -3,9 +3,13 @@ package com.margelo.nitro.nomol
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
+import androidx.annotation.Keep
+import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 
 /** Video and body points go out together, as on the web, so they don't get separated. */
+@Keep
+@DoNotStrip
 class HybridFileShare : HybridFileShareSpec() {
   override fun share(
     uris: Array<String>,

@@ -3,8 +3,13 @@ package com.margelo.nitro.nomol
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.util.Log
+import androidx.annotation.Keep
+import com.facebook.proguard.annotations.DoNotStrip
 
 /** A system tone needs no sound file or media player library. */
+// Nitro creates hybrid objects by class name from C++, so release builds must keep them.
+@Keep
+@DoNotStrip
 class HybridStartSound : HybridStartSoundSpec() {
   /**
    * Created on the first beep: the constructor throws when the system has no audio resources

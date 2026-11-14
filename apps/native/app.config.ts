@@ -43,6 +43,10 @@ const config: ExpoConfig = {
           compileSdkVersion: 37,
           targetSdkVersion: 37,
           buildToolsVersion: '37.0.0',
+          // R8 broke MediaPipe in release builds: it reads protobuf fields and its logger's
+          // callers by name ("Field platform_ ... not found", "no caller found on the stack").
+          // The APK is installed directly, so shrinking gains little.
+          enableMinifyInReleaseBuilds: false,
         },
       },
     ],

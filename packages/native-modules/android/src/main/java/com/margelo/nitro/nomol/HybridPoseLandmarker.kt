@@ -3,6 +3,8 @@ package com.margelo.nitro.nomol
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.util.Log
+import androidx.annotation.Keep
+import com.facebook.proguard.annotations.DoNotStrip
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.margelo.nitro.camera.HybridFrameSpec
@@ -19,6 +21,8 @@ import kotlin.math.min
  * the crop (where to look, `detectionArea` in core) is cut out here, turned upright and shrunk;
  * all coordinate math stays in core.
  */
+@Keep
+@DoNotStrip
 class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
   /** Detection runs on the camera thread, a model switch on a background one. */
   private val lock = Any()

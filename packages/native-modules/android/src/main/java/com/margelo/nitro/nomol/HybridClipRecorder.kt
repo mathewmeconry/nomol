@@ -11,11 +11,13 @@ import android.os.HandlerThread
 import android.util.Log
 import android.util.Size
 import android.view.Surface
+import androidx.annotation.Keep
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
+import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.camera.CameraOrientation
 import com.margelo.nitro.camera.HybridCameraOutputSpec
 import com.margelo.nitro.camera.MediaType
@@ -53,6 +55,8 @@ private const val TAG = "NomolRecorder"
  * are BOOTTIME µs, and JS gets and gives frame times, so a video's time 0 is exactly its first
  * frame's capture time.
  */
+@Keep
+@DoNotStrip
 class HybridClipRecorder : HybridClipRecorderSpec() {
   private val thread = HandlerThread("ClipRecorder").apply { start() }
   private val handler = Handler(thread.looper)
