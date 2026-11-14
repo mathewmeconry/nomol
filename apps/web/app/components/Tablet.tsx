@@ -10,6 +10,8 @@ import useCamera from '~/hooks/use-camera';
 import useCameras from '~/hooks/use-cameras';
 import useClips from '~/hooks/use-clips';
 import useDragSpot from '~/hooks/use-drag-spot';
+import useElementSize from '~/hooks/use-element-size';
+import useScreenBox from '~/hooks/use-screen-box';
 import usePoseDetector from '~/hooks/use-pose-detector';
 import useTapEffects from '~/hooks/use-tap-effects';
 import useWakeLock from '~/hooks/use-wake-lock';
@@ -35,6 +37,7 @@ import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
 import { cn } from 'cn';
 import { loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
+import { screenLayout } from '@nomol/core/layout';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
@@ -97,10 +100,22 @@ export default function Tablet() {
   /** The small live picture over the replay can be moved off the part the coach looks at. */
   const livePictureRef = useRef<HTMLDivElement>(null);
   const livePicture = useDragSpot();
+  const [screen, observeScreen] = useElementSize();
+  /** In the strip, where the replay controls or the zone editor's bar go. */
+  const [stripSlot, setStripSlot] = useState<HTMLDivElement | null>(null);
+  /** Among the docked replay controls, where the small live picture is laid over. */
+  const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
+  const liveSlotBox = useScreenBox(liveSlot);
 
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
   const recording = status === 'recording';
+  const layout = screenLayout(
+    screen.width,
+    screen.height,
+    showReplay ? current.aspectRatio : aspectRatio,
+  );
+  const { dock } = layout;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -327,12 +342,59 @@ export default function Tablet() {
     />
   );
 
+  const bar = (
+    <LiveControls
+      dock={dock}
+      status={status}
+      runUp={runUp}
+      onRunUp={(next) => {
+        saveRunUp(next);
+        setRunUp(next);
+      }}
+      editingZone={editingZone}
+      onEditZone={(editing) => {
+        setEditingZone(editing);
+        setView('live');
+        if (editing) {
+          setArmedAt(null);
+          setStatus('idle');
+        }
+      }}
+      armed={armedAt !== null}
+      canArm={detector !== null}
+      onArm={(armed) => setArmedAt(armed ? Date.now() : null)}
+      onStop={() => {
+        // Back to waiting for a start, as after a stop by sign, idling or leaving.
+        sessionRef.current = initialSession;
+        setStatus('idle');
+        void finishRecording(lastFrameTimeRef.current);
+      }}
+      onSettings={() => setSettingsOpen(true)}
+    />
+  );
+  const startHint = !showReplay && !editingZone && status === 'idle' && !loading && (
+    <StartHint runUp={runUp} aboveClips={clips.length > 0} docked={dock !== null} />
+  );
+  const liveClips = !showReplay && !editingZone && clips.length > 0;
+  // A `contents` box: what's portalled into it takes part in the strip's own layout.
+  const slot = (showReplay || editingZone) && <div ref={setStripSlot} className="contents" />;
+
   return (
-    <div className="relative h-dvh overflow-hidden bg-black text-slate-100">
+    <div ref={observeScreen} className="relative h-dvh overflow-hidden bg-black text-slate-100">
       {showReplay && current && (
         <ClipPlayer
           key={current.id}
           clip={current}
+          picture={layout.picture}
+          dock={dock}
+          dockElement={stripSlot}
+          liveSlot={
+            <div
+              ref={setLiveSlot}
+              className="shrink-0 self-start"
+              style={{ aspectRatio, width: `min(6rem, ${5 * aspectRatio}rem)` }}
+            />
+          }
           clipStrip={clipStrip}
           skeletonProgress={skeletonProgress[current.id] ?? null}
           onLive={() => setView('live')}
@@ -344,24 +406,44 @@ export default function Tablet() {
         />
       )}
 
+      {/*
+        One video element throughout, only moved: the camera stream and the detection loop are
+        attached to it. Docked over the replay it lies on its slot among the replay controls.
+      */}
       <div
         ref={livePictureRef}
-        className={
-          showReplay
-            ? cn(
-                'absolute z-10 w-1/3 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl sm:w-1/4',
-                !livePicture.style && 'top-24 right-3 sm:top-16',
-              )
-            : 'absolute inset-0 flex items-center justify-center'
+        className={cn(
+          'absolute',
+          showReplay && 'z-10 overflow-hidden rounded-lg',
+          // Docked it must match its slot exactly, so the frame is drawn outside it.
+          showReplay && dock && 'ring-2 ring-white/25',
+          showReplay && !dock && 'w-1/3 border-2 border-white/25 shadow-2xl sm:w-1/4',
+          showReplay && !dock && !livePicture.style && 'top-24 right-3 sm:top-16',
+          showReplay && dock && !liveSlotBox && 'invisible',
+        )}
+        style={
+          !showReplay
+            ? layout.picture
+            : dock
+              ? liveSlotBox
+                ? {
+                    left: liveSlotBox.left,
+                    top: liveSlotBox.top,
+                    width: liveSlotBox.width,
+                    height: liveSlotBox.height,
+                    // Scrolled out of the strip with its slot, rather than lying over the bar.
+                    // 2 px more for the ring around it.
+                    clipPath: `inset(${liveSlotBox.hiddenTop - 2}px -2px ${liveSlotBox.hiddenBottom - 2}px -2px)`,
+                  }
+                : undefined
+              : livePicture.style
         }
-        style={showReplay ? livePicture.style : undefined}
       >
         <div
           className="relative"
-          style={{
-            aspectRatio,
-            width: showReplay ? '100%' : `min(100%, calc(100dvh * ${aspectRatio}))`,
-          }}
+          style={
+            showReplay && !dock ? { aspectRatio, width: '100%' } : { width: '100%', height: '100%' }
+          }
         >
           <video
             ref={videoRef}
@@ -376,6 +458,7 @@ export default function Tablet() {
           {editingZone && (
             <ZoneEditor
               zone={zone}
+              dock={dock && stripSlot}
               onCancel={() => setEditingZone(false)}
               onSave={(next) => {
                 saveZone(next);
@@ -387,17 +470,24 @@ export default function Tablet() {
           {showReplay && (
             <button
               type="button"
-              aria-label="Live-Bild gross anzeigen, zum Verschieben ziehen"
-              onPointerDown={(event) => livePicture.onPointerDown(event, livePictureRef.current)}
+              aria-label={
+                dock
+                  ? 'Live-Bild gross anzeigen'
+                  : 'Live-Bild gross anzeigen, zum Verschieben ziehen'
+              }
+              onPointerDown={(event) => {
+                if (!dock) livePicture.onPointerDown(event, livePictureRef.current);
+              }}
               onPointerMove={livePicture.onPointerMove}
               onClick={() => {
-                if (!livePicture.wasDragged()) setView('live');
+                if (dock || !livePicture.wasDragged()) setView('live');
               }}
-              className="absolute inset-0 cursor-move touch-none"
+              className={cn('absolute inset-0', dock ? 'cursor-pointer' : 'cursor-move touch-none')}
             >
               <span
                 className={cn(
-                  'absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs font-semibold',
+                  'absolute rounded bg-black/70 font-semibold',
+                  dock ? 'top-1 left-1 px-1 text-[10px]' : 'top-2 left-2 px-2 py-0.5 text-xs',
                   recording ? 'text-red-300' : 'text-emerald-300',
                 )}
               >
@@ -408,33 +498,42 @@ export default function Tablet() {
         </div>
       </div>
 
-      <LiveControls
-        status={status}
-        runUp={runUp}
-        onRunUp={(next) => {
-          saveRunUp(next);
-          setRunUp(next);
-        }}
-        editingZone={editingZone}
-        onEditZone={(editing) => {
-          setEditingZone(editing);
-          setView('live');
-          if (editing) {
-            setArmedAt(null);
-            setStatus('idle');
-          }
-        }}
-        armed={armedAt !== null}
-        canArm={detector !== null}
-        onArm={(armed) => setArmedAt(armed ? Date.now() : null)}
-        onStop={() => {
-          // Back to waiting for a start, as after a stop by sign, idling or leaving.
-          sessionRef.current = initialSession;
-          setStatus('idle');
-          void finishRecording(lastFrameTimeRef.current);
-        }}
-        onSettings={() => setSettingsOpen(true)}
-      />
+      {/*
+        Docked: the strip beside or below the picture. Its width decides whether rows join into
+        lines (`@container`). The bar stays put; the rest scrolls if the strip is too short.
+      */}
+      {layout.strip ? (
+        <div
+          className={cn(
+            '@container absolute flex flex-col gap-2 bg-zinc-950',
+            dock === 'side' ? 'border-l border-white/10 p-2' : 'border-t border-white/10 p-3',
+          )}
+          style={layout.strip}
+        >
+          {dock === 'side' && bar}
+          <div
+            data-scroll-area
+            className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain"
+          >
+            {dock === 'side' ? (
+              <>
+                {slot}
+                {startHint}
+                {liveClips && <div className="mt-auto">{clipStrip}</div>}
+              </>
+            ) : (
+              <div className="mt-auto flex flex-wrap items-center gap-2">
+                {slot}
+                {startHint}
+                {liveClips && <div className="w-full">{clipStrip}</div>}
+              </div>
+            )}
+          </div>
+          {dock === 'bottom' && bar}
+        </div>
+      ) : (
+        bar
+      )}
 
       <Settings
         open={settingsOpen}
@@ -464,13 +563,8 @@ export default function Tablet() {
         }}
       />
 
-      {!showReplay && !editingZone && status === 'idle' && !loading && (
-        <StartHint runUp={runUp} aboveClips={clips.length > 0} />
-      )}
-
-      {!showReplay && !editingZone && clips.length > 0 && (
-        <div className="absolute inset-x-4 bottom-4 z-20">{clipStrip}</div>
-      )}
+      {!dock && startHint}
+      {!dock && liveClips && <div className="absolute inset-x-4 bottom-4 z-20">{clipStrip}</div>}
 
       {loading && <LoadingScreen message={loading} progress={downloadProgress} />}
     </div>

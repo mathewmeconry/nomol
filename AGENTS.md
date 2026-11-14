@@ -44,7 +44,9 @@ Requirements, as agreed with the owner:
   beep on/off, deleting all recordings (two taps), and the version (commit) and build time, to
   tell whether an update loaded.
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
-  next gymnast; the small live picture over it can be dragged anywhere, a tap on it goes live. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
+  next gymnast; the small live picture sits among the controls when they're docked (see Screen
+  space), otherwise over the replay where it can be dragged anywhere; a tap on it goes live. The
+  timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
@@ -53,10 +55,18 @@ Requirements, as agreed with the owner:
   (IndexedDB, persistent storage requested) until deleted with two taps; no automatic deletion,
   they're test footage for later; or all at once in the settings. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
   Android won't share `.json` files).
-- **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer;
-  controls float over the video and fade during playback; the bar keeps only the status, start
-  mode, start zone, settings and an icon-only record button. Every tap enters fullscreen (not on
-  iPhone); installed to the home screen it starts fullscreen.
+- **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer.
+  The picture (live or replay) is always shown whole. Where there's room, it's pinned to one edge
+  and the controls are docked in the free strip, never over the picture: in landscape a strip on
+  the right (bar, then replay controls, start hint and clips), in portrait at the bottom (replay
+  controls, then the bar with the record button lowest, within thumb reach). The web app's
+  `screenLayout` (`packages/core/src/layout.ts`) decides from the measured screen and picture
+  shape: a side strip needs 176 px, a bottom strip 200 px, and the picture may shrink by up to
+  10 % for it (phones in landscape need ~3 %, an upright camera in portrait ~7 %). Otherwise (a
+  16:9 desktop window, a 4:3 tablet with a 4:3 picture) the controls float over the picture as
+  before and fade during playback. In a short strip the bar stays put and the rest scrolls. The
+  bar keeps only the status, start mode, start zone, settings and an icon-only record button.
+  Every tap enters fullscreen (not on iPhone); installed to the home screen it starts fullscreen.
 - **Offline:** after one visit with internet the app and model work without a connection.
 - **No server for now.** Everything runs and stays on the device. A server is a later discussion.
 - **Privacy:** never commit or publish videos or exports of people (`.gitignore` blocks them).
@@ -196,7 +206,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - Tailwind CSS v4, shadcn/ui (new-york, Radix, lucide icons) in `apps/web/app/components/ui/` —
   add components with `pnpm exec shadcn add <name>` in `apps/web`; join classes with `cn` from the `cn` package
   (shadcn's replacement for clsx + tailwind-merge), never with template strings. Always dark
-  (`<html class="dark">`); controls over the video use the `floating` style in `Tablet.tsx`.
+  (`<html class="dark">`); controls over the video use the `floating` style in
+  `LiveControls.tsx`, docked beside it the `docked` one.
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, in a worker (`pose.worker.ts`): each camera frame
@@ -250,6 +261,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - `zoom.ts`: replay pinch zoom.
 - `start-figure.ts`: the animated start-sign figure in the start zone, drawn by both apps
   (web canvas, Android `StartSign.tsx` with turned views).
+- `layout.ts`: `screenLayout`, where the picture and the docked controls go (see Screen space).
 - `settings.ts`: per-device settings (zone, start mode, camera, wide angle, beep): storage keys,
   parsing with fallbacks, default zone.
 - `tests/poses.ts`: builds synthetic poses for tests.
@@ -286,13 +298,18 @@ shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` 
 - `lib/detection/`: MediaPipe itself: `pose-detector.client.ts` (models, lite fallback) talking
   to `pose.worker.ts`.
 - `components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
-  and finishes recordings, switches between live picture and replay.
+  and finishes recordings, switches between live picture and replay, and lays out the picture
+  and the docked strip (`screenLayout`). The replay controls and the zone editor's bar are
+  portalled into the strip; the live video element is never remounted, so docked over the
+  replay it is laid over its slot among the controls (`use-screen-box`).
 - `components/LiveControls.tsx`, `Settings.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the
-  bar over the live picture, the settings dialog, the start hint, the loading/error screen.
+  bar (over the picture or docked), the settings dialog, the start hint, the loading/error
+  screen.
 - `components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
 - `hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`
-  (MediaPipe loading), `use-tap-effects` (fullscreen and sound need a tap), camera hooks.
+  (MediaPipe loading), `use-tap-effects` (fullscreen and sound need a tap), camera hooks,
+  `use-element-size` and `use-screen-box` for the docked layout.
 - `lib/recording/`: recorder, pre-roll, storage, export. `capture.client.ts` gathers poses,
   skeleton frames and stills while recording and turns them into a clip.
 - `lib/skeleton/`: replay skeleton. `skeleton.worker.ts` MediaPipe on the turned views,

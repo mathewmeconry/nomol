@@ -9,6 +9,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '~/components/ui/button';
 import { Progress } from '~/components/ui/progress';
 import { Slider } from '~/components/ui/slider';
@@ -17,12 +18,13 @@ import { drawSkeleton, prepareCanvas } from '~/lib/draw';
 import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { frameDuration, poseAt, routineRange, type Clip } from '@nomol/core/recording/clip';
 import type { Point } from '@nomol/core/detection/pose';
+import type { Dock, Rect } from '@nomol/core/layout';
 import { exportClip } from '~/lib/recording/export.client';
 import type { SkeletonProgress } from '~/lib/skeleton/refiner.client';
 import { cn } from 'cn';
 import { FULL_VIEW, zoomView, type View } from '@nomol/core/zoom';
 
-/** One button cycles through these, to save space on phones. */
+/** Over the picture one button cycles through these, to save space on phones. */
 const SPEEDS = [
   { value: 1, label: '1×' },
   { value: 0.5, label: '½×' },
@@ -60,7 +62,15 @@ function fingers(points: Point[]) {
 
 type Props = {
   clip: Clip;
-  /** The list of recent clips, shown above the controls. */
+  /** Where the video goes on the screen (`screenLayout`). */
+  picture: Rect;
+  /** Beside or below the picture, the controls go into the strip there; null: over the video. */
+  dock: Dock;
+  /** The strip's place for the controls, once it's on the page. */
+  dockElement: HTMLElement | null;
+  /** Where the small live picture goes among the docked controls. */
+  liveSlot: ReactNode;
+  /** The list of recent clips. */
   clipStrip: ReactNode;
   /** While the skeleton is being computed; frames without one show no skeleton yet. */
   skeletonProgress: SkeletonProgress | null;
@@ -72,7 +82,17 @@ type Props = {
  * Plays a clip in a loop, with slow motion, frame stepping and the recorded skeleton on top.
  * Render it with `key={clip.id}` so switching clips starts fresh.
  */
-export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, onDelete }: Props) {
+export default function ClipPlayer({
+  clip,
+  picture,
+  dock,
+  dockElement,
+  liveSlot,
+  clipStrip,
+  skeletonProgress,
+  onLive,
+  onDelete,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Follows the video's own play/pause events, so the button never disagrees with it.
@@ -97,12 +117,12 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
     if (videoRef.current) videoRef.current.playbackRate = speed;
   }, [speed]);
 
-  // On phones the controls cover much of the picture, so they fade out during playback.
+  // Over the picture the controls cover much of it on phones, so they fade out during playback.
   useEffect(() => {
-    if (!playing || !controlsVisible) return;
+    if (dock || !playing || !controlsVisible) return;
     const timer = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_MS);
     return () => clearTimeout(timer);
-  }, [playing, controlsVisible, lastTouch]);
+  }, [dock, playing, controlsVisible, lastTouch]);
 
   useEffect(() => {
     const { startMs, endMs } = routineRange(clip);
@@ -203,21 +223,203 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
     pointersRef.current.delete(event.pointerId);
   }
 
+  /** In a wide strip below the picture, rows of controls join into one line (`@xl`). */
+  const joinRows = dock === 'bottom';
+  const routine = routineRange(clip);
+  const timeline = (
+    <div className="w-full space-y-1">
+      {skeletonProgress && (
+        <div className="flex items-center gap-3 text-xs text-slate-300" role="status">
+          <span className={cn('shrink-0', dock === 'side' && 'sr-only')}>
+            {SKELETON_TEXT[skeletonProgress.stage]}
+          </span>
+          {skeletonProgress.stage !== 'failed' && (
+            <>
+              <Progress value={skeletonProgress.percent} className="h-1.5" />
+              <span className="w-10 shrink-0 text-right font-mono tabular-nums">
+                {skeletonProgress.percent}&nbsp;%
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      <div className="relative">
+        {/* The looped routine, so the coach sees what the trim kept. */}
+        <span
+          aria-hidden
+          className="absolute bottom-0 h-0.5 rounded-full bg-sky-400/70"
+          style={{
+            left: `${(routine.startMs / clip.durationMs) * 100}%`,
+            width: `${((routine.endMs - routine.startMs) / clip.durationMs) * 100}%`,
+          }}
+        />
+        <Slider
+          aria-label="Zeitleiste"
+          min={0}
+          max={clip.durationMs}
+          step={1}
+          value={[Math.min(timeMs, clip.durationMs)]}
+          onValueChange={([ms]) => seek(ms)}
+          className="h-6 cursor-pointer"
+        />
+      </div>
+    </div>
+  );
+  const playButton = (
+    <Button
+      size="icon"
+      aria-label={playing ? 'Pause' : 'Abspielen'}
+      onClick={togglePlay}
+      className={cn(dock ? 'min-w-0 flex-1' : 'w-12', joinRows && '@xl:w-12 @xl:flex-none')}
+    >
+      {playing ? <Pause /> : <Play />}
+    </Button>
+  );
+  function stepButton({ frames, Icon, name }: (typeof STEPS)[number]) {
+    return (
+      <Button
+        key={frames}
+        variant="secondary"
+        size="icon"
+        aria-label={name}
+        onClick={() => stepFrames(frames)}
+        className={cn(dock && 'min-w-0 flex-1', joinRows && '@xl:flex-none')}
+      >
+        <Icon />
+      </Button>
+    );
+  }
+  const skeletonToggle = (
+    <Toggle
+      size={dock ? 'sm' : 'default'}
+      variant="outline"
+      pressed={skeleton}
+      onPressedChange={setSkeleton}
+      className="data-[state=on]:text-sky-300"
+    >
+      Skelett
+    </Toggle>
+  );
+  /** The strip beside the picture only has room for icons here. */
+  const iconsOnly = dock === 'side';
+  const exportButton = (
+    <Button
+      variant="secondary"
+      size={iconsOnly ? 'icon-sm' : dock ? 'sm' : 'default'}
+      disabled={exporting}
+      onClick={() => {
+        setExporting(true);
+        exportClip(clip)
+          .catch((_error: unknown) => setExportFailed(true))
+          .finally(() => setExporting(false));
+      }}
+      className={cn(iconsOnly && exportFailed && 'text-red-300')}
+    >
+      <Share />
+      {/* Icon only on narrow phones, so the controls fit in two rows. */}
+      <span
+        className={cn(
+          iconsOnly ? 'sr-only' : !exportFailed && !dock && 'max-sm:sr-only',
+          dock && 'truncate',
+        )}
+      >
+        {exportFailed ? 'Teilen fehlgeschlagen' : exporting ? 'Teilen …' : 'Teilen'}
+      </span>
+    </Button>
+  );
+  // Two taps, because the clip is gone for good.
+  const deleteButton = (
+    <Button
+      variant={confirmingDelete ? 'destructive' : 'secondary'}
+      size={dock && (iconsOnly || !confirmingDelete) ? 'icon-sm' : dock ? 'sm' : 'default'}
+      onClick={() => (confirmingDelete ? onDelete() : setConfirmingDelete(true))}
+      className={cn(!confirmingDelete && 'text-red-300')}
+    >
+      <Trash2 />
+      <span
+        className={cn(
+          (iconsOnly || !confirmingDelete) && (dock ? 'sr-only' : 'max-sm:sr-only'),
+          dock && 'truncate',
+        )}
+      >
+        {confirmingDelete ? 'Wirklich löschen?' : 'Löschen'}
+      </span>
+    </Button>
+  );
+  const time = (
+    <span className="font-mono text-xs text-slate-300 tabular-nums">
+      {formatTime(timeMs)} / {formatTime(clip.durationMs)}
+    </span>
+  );
+
+  const overlay = (
+    <div
+      className={cn(
+        'absolute inset-x-0 bottom-0 space-y-1.5 bg-linear-to-t from-black/90 via-black/60 to-transparent px-3 pt-8 pb-2 transition-opacity',
+        !controlsVisible && 'pointer-events-none opacity-0',
+      )}
+    >
+      {clipStrip}
+      {timeline}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {playButton}
+        <div className="flex gap-1" role="group" aria-label="Bild für Bild">
+          {STEPS.map(stepButton)}
+        </div>
+        <Button
+          variant="secondary"
+          aria-label="Geschwindigkeit"
+          onClick={() =>
+            setSpeed(SPEEDS[(SPEEDS.findIndex((s) => s.value === speed) + 1) % SPEEDS.length].value)
+          }
+          className="w-12 font-mono"
+        >
+          {SPEEDS.find((s) => s.value === speed)?.label}
+        </Button>
+        {skeletonToggle}
+        {skeleton && (
+          <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
+            {(
+              [
+                ['Links', LIMB_COLORS.leftArm, LIMB_COLORS.leftLeg],
+                ['Rechts', LIMB_COLORS.rightArm, LIMB_COLORS.rightLeg],
+              ] as const
+            ).map(([side, arm, leg]) => (
+              <span key={side} className="flex items-center gap-1">
+                {side}
+                <span className="ml-1 h-1 w-3 rounded" style={{ background: arm }} />
+                Arm
+                <span className="ml-1 h-1 w-3 rounded" style={{ background: leg }} />
+                Bein
+              </span>
+            ))}
+          </span>
+        )}
+        {time}
+
+        <span className="flex-1" />
+        {exportButton}
+        {deleteButton}
+        <Button variant="secondary" onClick={onLive} className="text-emerald-300">
+          Live
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center bg-black"
+      className="absolute inset-0 bg-black"
       onPointerDown={() => {
         setControlsVisible(true);
         setLastTouch(Date.now());
       }}
     >
       <div
-        className="relative touch-none overflow-hidden"
-        // The clip's own shape: the phone may have been turned since it was recorded.
-        style={{
-          aspectRatio: clip.aspectRatio,
-          width: `min(100%, calc(100dvh * ${clip.aspectRatio}))`,
-        }}
+        className="absolute touch-none overflow-hidden"
+        // Laid out for the clip's own shape: the phone may have been turned since it was recorded.
+        style={picture}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           pointersRef.current.set(event.pointerId, localPoint(event));
@@ -249,133 +451,70 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>
 
-      <div
-        className={cn(
-          'absolute inset-x-0 bottom-0 space-y-1.5 bg-linear-to-t from-black/90 via-black/60 to-transparent px-3 pt-8 pb-2 transition-opacity',
-          !controlsVisible && 'pointer-events-none opacity-0',
-        )}
-      >
-        {clipStrip}
-        {skeletonProgress && (
-          <div className="flex items-center gap-3 text-xs text-slate-300" role="status">
-            <span className="shrink-0">{SKELETON_TEXT[skeletonProgress.stage]}</span>
-            {skeletonProgress.stage !== 'failed' && (
-              <>
-                <Progress value={skeletonProgress.percent} className="h-1.5" />
-                <span className="w-10 shrink-0 text-right font-mono tabular-nums">
-                  {skeletonProgress.percent}&nbsp;%
-                </span>
-              </>
-            )}
-          </div>
-        )}
-        <Slider
-          aria-label="Zeitleiste"
-          min={0}
-          max={clip.durationMs}
-          step={1}
-          value={[Math.min(timeMs, clip.durationMs)]}
-          onValueChange={([ms]) => seek(ms)}
-          className="h-6 cursor-pointer"
-        />
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            size="icon"
-            aria-label={playing ? 'Pause' : 'Abspielen'}
-            onClick={togglePlay}
-            className="w-12"
-          >
-            {playing ? <Pause /> : <Play />}
-          </Button>
-          <div className="flex gap-1" role="group" aria-label="Bild für Bild">
-            {STEPS.map(({ frames, Icon, name }) => (
-              <Button
-                key={frames}
-                variant="secondary"
-                size="icon"
-                aria-label={name}
-                onClick={() => stepFrames(frames)}
+      {dock
+        ? dockElement &&
+          createPortal(
+            <>
+              {dock === 'bottom' && timeline}
+              <div
+                className={cn('flex w-full gap-1', joinRows && '@xl:w-auto')}
+                role="group"
+                aria-label="Bild für Bild"
               >
-                <Icon />
-              </Button>
-            ))}
-          </div>
-          <Button
-            variant="secondary"
-            aria-label="Geschwindigkeit"
-            onClick={() =>
-              setSpeed(
-                SPEEDS[(SPEEDS.findIndex((s) => s.value === speed) + 1) % SPEEDS.length].value,
-              )
-            }
-            className="w-12 font-mono"
-          >
-            {SPEEDS.find((s) => s.value === speed)?.label}
-          </Button>
-          <Toggle
-            variant="outline"
-            pressed={skeleton}
-            onPressedChange={setSkeleton}
-            className="data-[state=on]:text-sky-300"
-          >
-            Skelett
-          </Toggle>
-          {skeleton && (
-            <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
-              {(
-                [
-                  ['Links', LIMB_COLORS.leftArm, LIMB_COLORS.leftLeg],
-                  ['Rechts', LIMB_COLORS.rightArm, LIMB_COLORS.rightLeg],
-                ] as const
-              ).map(([side, arm, leg]) => (
-                <span key={side} className="flex items-center gap-1">
-                  {side}
-                  <span className="ml-1 h-1 w-3 rounded" style={{ background: arm }} />
-                  Arm
-                  <span className="ml-1 h-1 w-3 rounded" style={{ background: leg }} />
-                  Bein
-                </span>
-              ))}
-            </span>
-          )}
-          <span className="font-mono text-xs text-slate-300 tabular-nums">
-            {formatTime(timeMs)} / {formatTime(clip.durationMs)}
-          </span>
-
-          <span className="flex-1" />
-          <Button
-            variant="secondary"
-            disabled={exporting}
-            onClick={() => {
-              setExporting(true);
-              exportClip(clip)
-                .catch((_error: unknown) => setExportFailed(true))
-                .finally(() => setExporting(false));
-            }}
-          >
-            <Share />
-            {/* Icon only on narrow phones, so the controls fit in two rows. */}
-            <span className={exportFailed ? '' : 'max-sm:sr-only'}>
-              {exportFailed ? 'Export fehlgeschlagen' : exporting ? 'Export …' : 'Export'}
-            </span>
-          </Button>
-          {/* Two taps, because the clip is gone for good. */}
-          <Button
-            variant={confirmingDelete ? 'destructive' : 'secondary'}
-            onClick={() => (confirmingDelete ? onDelete() : setConfirmingDelete(true))}
-            className={confirmingDelete ? '' : 'text-red-300'}
-          >
-            <Trash2 />
-            <span className={confirmingDelete ? '' : 'max-sm:sr-only'}>
-              {confirmingDelete ? 'Wirklich löschen?' : 'Löschen'}
-            </span>
-          </Button>
-          <Button variant="secondary" onClick={onLive} className="text-emerald-300">
-            Live
-          </Button>
-        </div>
-      </div>
+                {stepButton(STEPS[0])}
+                {stepButton(STEPS[1])}
+                {playButton}
+                {stepButton(STEPS[2])}
+                {stepButton(STEPS[3])}
+              </div>
+              <div className={cn('flex w-full gap-1', joinRows && '@xl:w-auto')}>
+                <div className="flex flex-1 gap-1" role="group" aria-label="Geschwindigkeit">
+                  {[...SPEEDS].reverse().map((option) => (
+                    <Toggle
+                      key={option.value}
+                      size="sm"
+                      variant="outline"
+                      pressed={speed === option.value}
+                      onPressedChange={() => setSpeed(option.value)}
+                      className="min-w-0 flex-1 px-1 font-mono data-[state=on]:text-sky-300"
+                    >
+                      {option.label}
+                    </Toggle>
+                  ))}
+                </div>
+                {skeletonToggle}
+              </div>
+              <div
+                className={cn(
+                  'flex w-full gap-2',
+                  dock === 'bottom' && 'grow items-center @xl:w-auto @xl:basis-96',
+                )}
+              >
+                {liveSlot}
+                {dock === 'side' ? (
+                  // Too narrow for text: icon buttons beside the live picture, time below.
+                  <div className="flex flex-col gap-1">
+                    {exportButton}
+                    {deleteButton}
+                  </div>
+                ) : (
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5 @xl:flex-row @xl:items-center @xl:gap-2">
+                    <span className="shrink-0">{time}</span>
+                    <div className="flex shrink-0 gap-1">
+                      {exportButton}
+                      {deleteButton}
+                    </div>
+                    <div className="min-w-0 flex-1">{clipStrip}</div>
+                  </div>
+                )}
+              </div>
+              {dock === 'side' && time}
+              {dock === 'side' && timeline}
+              {dock === 'side' && <div className="mt-auto">{clipStrip}</div>}
+            </>,
+            dockElement,
+          )
+        : overlay}
     </div>
   );
 }
