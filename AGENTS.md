@@ -248,6 +248,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - `skeleton/rotation.ts`: the turned views, the tracking through a clip and the order of the
   passes (`skeletonPasses`) for the replay skeleton. `skeleton/lines.ts`: the skeleton's lines and colours, drawn by both apps.
 - `zoom.ts`: replay pinch zoom.
+- `start-figure.ts`: the animated start-sign figure in the start zone, drawn by both apps
+  (web canvas, Android `StartSign.tsx` with turned views).
 - `settings.ts`: per-device settings (zone, start mode, camera, wide angle, beep): storage keys,
   parsing with fallbacks, default zone.
 - `tests/poses.ts`: builds synthetic poses for tests.
