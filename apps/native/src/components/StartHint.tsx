@@ -3,9 +3,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors } from './theme';
 
 /** Tells the gymnast how to start a recording. Same texts as the web app. */
-export default function StartHint({ runUp }: { runUp: RunUp | null }) {
+export default function StartHint({
+  runUp,
+  aboveClips,
+}: {
+  runUp: RunUp | null;
+  aboveClips: boolean;
+}) {
   return (
-    <View style={styles.wrap} pointerEvents="none">
+    <View style={[styles.wrap, aboveClips && styles.aboveClips]} pointerEvents="none">
       <View style={styles.hint}>
         {runUp ? (
           <>
@@ -33,6 +39,7 @@ export default function StartHint({ runUp }: { runUp: RunUp | null }) {
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', left: 12, right: 12, bottom: 24, alignItems: 'center' },
+  aboveClips: { bottom: 112 },
   hint: {
     paddingHorizontal: 20,
     paddingVertical: 12,

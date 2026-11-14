@@ -1,15 +1,12 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import Constants from 'expo-constants';
+import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { CameraDevice } from 'react-native-vision-camera';
+import { APP_VERSION, BUILT_AT } from '../lib/app-version';
 import { colors, styles as shared } from './theme';
 
-const extra = Constants.expoConfig?.extra;
-const APP_VERSION = typeof extra?.appVersion === 'string' ? extra.appVersion : 'unbekannt';
-const BUILT_AT =
-  typeof extra?.builtAt === 'string'
-    ? new Date(extra.builtAt).toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' })
-    : 'unbekannt';
+const BUILT_AT_TEXT =
+  BUILT_AT?.toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' }) ?? 'unbekannt';
 
 const POSITION: Record<CameraDevice['position'], string> = {
   back: 'Rückkamera',
@@ -51,6 +48,10 @@ type Props = {
   onWide: (wide: boolean) => void;
   soundOn: boolean;
   onSound: (on: boolean) => void;
+  /** Camera and zoom can't change during a recording. */
+  recording: boolean;
+  clipCount: number;
+  onDeleteAll: () => void;
 };
 
 /** What's set up once per device, kept off the live picture. */
@@ -65,14 +66,24 @@ export default function Settings({
   onWide,
   soundOn,
   onSound,
+  recording,
+  clipCount,
+  onDeleteAll,
 }: Props) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  function close() {
+    setConfirmingDelete(false);
+    onClose();
+  }
+
   return (
     <Modal
       visible={open}
       transparent
       animationType="fade"
       supportedOrientations={['portrait', 'landscape']}
-      onRequestClose={onClose}
+      onRequestClose={close}
     >
       <View style={styles.backdrop}>
         <View style={styles.dialog}>
@@ -81,7 +92,7 @@ export default function Settings({
               <Text style={styles.title}>Einstellungen</Text>
               <Text style={styles.muted}>Gelten für dieses Gerät.</Text>
             </View>
-            <Pressable accessibilityLabel="Schliessen" onPress={onClose} hitSlop={12}>
+            <Pressable accessibilityLabel="Schliessen" onPress={close} hitSlop={12}>
               <MaterialCommunityIcons name="close" size={22} color={colors.text} />
             </Pressable>
           </View>
@@ -91,9 +102,10 @@ export default function Settings({
             {devices.map((device) => (
               <Pressable
                 key={device.id}
-                style={styles.row}
+                style={[styles.row, recording && shared.disabled]}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: device.id === deviceId }}
+                accessibilityState={{ selected: device.id === deviceId, disabled: recording }}
+                disabled={recording}
                 onPress={() => onDevice(device.id)}
               >
                 <Text style={styles.text}>{cameraLabel(device)}</Text>
@@ -107,7 +119,12 @@ export default function Settings({
             {wideZoom !== undefined && (
               <View style={styles.row}>
                 <Text style={styles.text}>{`Weitwinkel (${zoomText(wideZoom)}×)`}</Text>
-                <Switch accessibilityLabel="Weitwinkel" value={wide} onValueChange={onWide} />
+                <Switch
+                  accessibilityLabel="Weitwinkel"
+                  value={wide}
+                  disabled={recording}
+                  onValueChange={onWide}
+                />
               </View>
             )}
 
@@ -117,11 +134,39 @@ export default function Settings({
               <Switch accessibilityLabel="Piepton" value={soundOn} onValueChange={onSound} />
             </View>
 
+            <Text style={styles.heading}>Aufnahmen</Text>
+            {/* Two taps, because the clips are gone for good. */}
+            <Pressable
+              style={[
+                shared.button,
+                styles.deleteAll,
+                confirmingDelete && styles.confirming,
+                clipCount === 0 && shared.disabled,
+              ]}
+              disabled={clipCount === 0}
+              onPress={() => {
+                if (!confirmingDelete) return setConfirmingDelete(true);
+                setConfirmingDelete(false);
+                onDeleteAll();
+              }}
+            >
+              <MaterialCommunityIcons
+                name="trash-can-outline"
+                size={18}
+                color={confirmingDelete ? colors.text : colors.red}
+              />
+              <Text style={[shared.buttonText, !confirmingDelete && { color: colors.red }]}>
+                {confirmingDelete
+                  ? `Wirklich alle ${clipCount} löschen?`
+                  : `Alle Aufnahmen löschen (${clipCount})`}
+              </Text>
+            </Pressable>
+
             <Text style={[styles.muted, styles.version]}>
-              Version {APP_VERSION} · gebaut {BUILT_AT}
+              Version {APP_VERSION} · gebaut {BUILT_AT_TEXT}
             </Text>
           </ScrollView>
-          <Pressable style={[shared.button, styles.done]} onPress={onClose}>
+          <Pressable style={[shared.button, styles.done]} onPress={close}>
             <Text style={shared.buttonText}>Fertig</Text>
           </Pressable>
         </View>
@@ -161,5 +206,7 @@ const styles = StyleSheet.create({
   text: { flexShrink: 1, color: colors.text, fontSize: 14 },
   muted: { color: colors.muted, fontSize: 13 },
   version: { marginTop: 8, fontSize: 12 },
+  deleteAll: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8 },
+  confirming: { backgroundColor: colors.destructive, borderColor: colors.destructive },
   done: { alignSelf: 'flex-end' },
 });

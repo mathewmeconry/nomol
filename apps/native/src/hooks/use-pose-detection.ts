@@ -23,6 +23,15 @@ const ROTATION = { up: 0, left: 90, down: 180, right: 270 } as const;
 
 const WHOLE: Zone = { left: 0, top: 0, right: 1, bottom: 1 };
 
+/**
+ * How often a frame is saved while recording, for the replay skeleton, as in the web app: 10 per
+ * second look smooth with interpolation and keep the computation after a recording short.
+ */
+const STILL_EVERY_MS = 100;
+
+/** Where stills go (null when not recording) and when the last was saved; camera thread only. */
+type Stills = { dir: string | null; last: number };
+
 /** What the frame worklet needs from the screen, written on the JS thread. */
 type Look = {
   /** Where to detect (`detectionArea`), in the picture. */
@@ -42,6 +51,7 @@ type Raw = {
   height: number;
   rotation: number;
   mirrored: boolean;
+  still: string | null;
 };
 
 export type Detected = {
@@ -51,6 +61,8 @@ export type Detected = {
   time: number;
   /** Width / height of the picture. */
   aspectRatio: number;
+  /** Path of the still saved from this frame (see `saveStills`), if one was. */
+  still: string | null;
 };
 
 /**
@@ -64,6 +76,7 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
   const [look] = useState(() =>
     createSynchronizable<Look>({ area: WHOLE, mirrored: false, paused: true }),
   );
+  const [stills] = useState(() => createSynchronizable<Stills>({ dir: null, last: -Infinity }));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timingsRef = useRef<number[] | null>([]);
@@ -88,6 +101,7 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
         poses: posesInArea(raw.landmarks, area),
         time: raw.time,
         aspectRatio: turned ? raw.height / raw.width : raw.width / raw.height,
+        still: raw.still,
       });
       const timings = timingsRef.current;
       if (!timings) return;
@@ -109,7 +123,20 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
         const crop = bufferCrop(area, frame.width, frame.height, { rotation, mirrored });
         // Nanoseconds since boot; MediaPipe and the session work in ms.
         const time = frame.timestamp / 1e6;
-        const { landmarks, ms } = landmarker.detect(frame, crop, rotation, mirrored, time);
+        const { dir, last } = stills.getDirty();
+        let still: string | null = null;
+        if (dir !== null && time - last >= STILL_EVERY_MS) {
+          still = `${dir}/${Math.round(time)}.jpg`;
+          stills.setBlocking({ dir, last: time });
+        }
+        const { landmarks, ms } = landmarker.detect(
+          frame,
+          crop,
+          rotation,
+          mirrored,
+          time,
+          still ?? undefined,
+        );
         scheduleOnRN(deliver, {
           landmarks,
           ms,
@@ -119,12 +146,13 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
           height: frame.height,
           rotation,
           mirrored,
+          still,
         });
       } finally {
         frame.dispose();
       }
     },
-    [look, landmarker, deliver],
+    [look, stills, landmarker, deliver],
   );
 
   const frameOutput = useFrameOutput({
@@ -142,5 +170,11 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
     [look, ready],
   );
 
-  return { frameOutput, ready, error, setLook };
+  /** While recording, saves a still of a detected frame every `STILL_EVERY_MS` into `dir`. */
+  const saveStills = useCallback(
+    (dir: string | null) => stills.setBlocking({ dir, last: -Infinity }),
+    [stills],
+  );
+
+  return { frameOutput, ready, error, setLook, saveStills };
 }

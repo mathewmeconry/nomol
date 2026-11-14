@@ -1,3 +1,5 @@
+import z from 'zod';
+import { zoneSchema } from '../settings';
 import type { Clip } from './clip';
 
 /**
@@ -30,5 +32,39 @@ export function exportData(clip: Clip, userAgent: string) {
     userAgent,
     frames: clip.frames,
     skeleton: clip.skeleton,
+  };
+}
+
+const frameSchema = z.object({
+  time: z.number(),
+  pose: z.array(z.object({ x: z.number(), y: z.number(), visibility: z.number().optional() })),
+});
+
+const exportSchema = z.object({
+  version: z.literal(EXPORT_VERSION),
+  appVersion: z.string().nullable(),
+  startReason: z.enum(['sign', 'button', 'runUp']).nullable(),
+  runUp: z.enum(['left', 'right', 'any']).nullable(),
+  startedAt: z.iso.datetime(),
+  durationMs: z.number().nonnegative(),
+  aspectRatio: z.number().positive(),
+  zone: zoneSchema,
+  frames: z.array(frameSchema),
+  skeleton: z.array(frameSchema),
+});
+
+/**
+ * Reads back what `exportData` wrote (the current version only); the Android app stores its
+ * clips this way. Null if it isn't such an export.
+ */
+export function parseExport(raw: unknown): Omit<Clip, 'id' | 'url' | 'thumbnail'> | null {
+  const result = exportSchema.safeParse(raw);
+  if (!result.success) return null;
+  const { version: _version, appVersion, startReason, runUp, startedAt, ...data } = result.data;
+  return {
+    ...data,
+    startedAt: new Date(startedAt),
+    recordedWith:
+      appVersion !== null && startReason !== null ? { appVersion, startReason, runUp } : undefined,
   };
 }

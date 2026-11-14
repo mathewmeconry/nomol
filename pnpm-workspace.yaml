@@ -6,6 +6,10 @@ allowBuilds:
   msw: false
   protobufjs: false
 
+# VisionCamera records 16:9 even when asked for 4:3 (see the patch).
+patchedDependencies:
+  react-native-vision-camera@5.2.4: patches/react-native-vision-camera@5.2.4.patch
+
 # eslint-plugin-react and eslint-plugin-jsx-a11y don't declare ESLint 10 support yet;
 # eslint.config.mjs wraps them with @eslint/compat's fixupPluginRules.
 peerDependencyRules:

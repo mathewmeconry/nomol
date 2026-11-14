@@ -30,6 +30,17 @@ export interface PoseLandmarker extends HybridObject<{ android: 'kotlin' }> {
    * Poses in `crop` of the frame, turned clockwise by `rotation` degrees and flipped if
    * `mirrored` (so it looks as on screen). `timeMs` must grow from frame to frame. No poses
    * until a model is loaded.
+   *
+   * With `stillPath`, the whole frame is also saved there as a JPEG (turned the same way, long
+   * side 640 px), in the background: for the clip's thumbnail and the replay skeleton. Done here
+   * because the frame is already converted for detection.
    */
-  detect(frame: Frame, crop: Crop, rotation: number, mirrored: boolean, timeMs: number): Detection;
+  detect(
+    frame: Frame,
+    crop: Crop,
+    rotation: number,
+    mirrored: boolean,
+    timeMs: number,
+    stillPath?: string,
+  ): Detection;
 }

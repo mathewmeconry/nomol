@@ -35,6 +35,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-sqlite',
+    'expo-video',
     [
       'expo-build-properties',
       {

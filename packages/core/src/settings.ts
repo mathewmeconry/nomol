@@ -18,7 +18,7 @@ export const SETTINGS_KEYS = {
 export const DEFAULT_ZONE: Zone = { left: 0.3, top: 0.35, right: 0.7, bottom: 0.95 };
 
 const unit = z.number().min(0).max(1);
-const zoneSchema = z
+export const zoneSchema = z
   .object({ left: unit, top: unit, right: unit, bottom: unit })
   .refine((zone) => zone.left < zone.right && zone.top < zone.bottom);
 

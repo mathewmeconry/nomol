@@ -12,8 +12,11 @@ import com.margelo.nitro.NitroModules
 import com.margelo.nitro.camera.HybridFrameSpec
 import com.margelo.nitro.camera.public.NativeFrame
 import com.margelo.nitro.core.Promise
+import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
 
@@ -28,6 +31,9 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
   private var landmarker: PoseLandmarker? = null
   private var lastTimeMs = Long.MIN_VALUE
   private var count = 0
+
+  /** One at a time, so a slow write never piles up work on the camera thread. */
+  private val stillWriter = Executors.newSingleThreadExecutor()
 
   override fun load(model: Model): Promise<Unit> =
     Promise.async {
@@ -53,10 +59,12 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     rotation: Double,
     mirrored: Boolean,
     timeMs: Double,
+    stillPath: String?,
   ): Detection {
     val start = System.nanoTime()
     val image = (frame as NativeFrame).image
     val whole = image.toBitmap()
+    if (stillPath != null) saveStill(whole, rotation, mirrored, stillPath)
     // MediaPipe shrinks its input to 256 px anyway; a smaller bitmap is cheaper to hand over.
     val scale = min(1f, MAX_SIDE / max(crop.width, crop.height).toFloat())
     val matrix =
@@ -102,8 +110,38 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     return Detection(result, ms)
   }
 
+  /** Shrinks and turns on the camera thread (cheap); compresses in the background. */
+  private fun saveStill(
+    whole: Bitmap,
+    rotation: Double,
+    mirrored: Boolean,
+    path: String,
+  ) {
+    val scale = min(1f, STILL_SIDE / max(whole.width, whole.height).toFloat())
+    val matrix =
+      Matrix().apply {
+        postRotate(rotation.toFloat())
+        postScale(if (mirrored) -scale else scale, scale)
+      }
+    var still = Bitmap.createBitmap(whole, 0, 0, whole.width, whole.height, matrix, true)
+    // createBitmap may hand back the frame's own bitmap, which is recycled right after detection.
+    if (still === whole) still = whole.copy(Bitmap.Config.ARGB_8888, false)
+    stillWriter.execute {
+      try {
+        val file = File(path)
+        file.parentFile?.mkdirs()
+        FileOutputStream(file).use { still.compress(Bitmap.CompressFormat.JPEG, STILL_QUALITY, it) }
+      } catch (e: Exception) {
+        Log.w(TAG, "Could not save still $path", e)
+      } finally {
+        still.recycle()
+      }
+    }
+  }
+
   override fun dispose() {
     super.dispose()
+    stillWriter.shutdown()
     synchronized(lock) {
       landmarker?.close()
       landmarker = null
@@ -139,6 +177,10 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     private const val MAX_POSES = 4
 
     private const val MAX_SIDE = 512f
+
+    /** Like the web app's skeleton frames: enough for MediaPipe on a crop around the gymnast. */
+    private const val STILL_SIDE = 640f
+    private const val STILL_QUALITY = 85
 
     /** Timing in logcat now and then, to check the phone's speed. */
     private const val LOG_EVERY = 100

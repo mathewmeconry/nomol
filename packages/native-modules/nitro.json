@@ -20,6 +20,18 @@
         "language": "kotlin",
         "implementationClassName": "HybridStartSound"
       }
+    },
+    "CameraClock": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridCameraClock"
+      }
+    },
+    "FileShare": {
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridFileShare"
+      }
     }
   },
   "ignorePaths": ["**/node_modules"]
