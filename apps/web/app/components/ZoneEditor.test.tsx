@@ -11,22 +11,49 @@ function drawingSurface() {
   return surface;
 }
 
+function drag(from: [number, number], to: [number, number]) {
+  const surface = drawingSurface();
+  fireEvent.pointerDown(surface, { clientX: from[0], clientY: from[1], pointerId: 1 });
+  fireEvent.pointerMove(surface, { clientX: to[0], clientY: to[1], pointerId: 1 });
+  fireEvent.pointerUp(surface, { pointerId: 1 });
+}
+
 describe('ZoneEditor', () => {
   it('saves the rectangle the coach drags, in image coordinates', () => {
     const onSave = vi.fn();
-    render(<ZoneEditor zone={zone} onSave={onSave} onCancel={vi.fn()} />);
-    const surface = drawingSurface();
+    render(<ZoneEditor zones={[zone]} onSave={onSave} onCancel={vi.fn()} />);
 
-    fireEvent.pointerDown(surface, { clientX: 600, clientY: 450, pointerId: 1 });
-    fireEvent.pointerMove(surface, { clientX: 200, clientY: 100, pointerId: 1 });
-    fireEvent.pointerUp(surface, { pointerId: 1 });
+    drag([600, 450], [200, 100]);
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
-    expect(onSave).toHaveBeenCalledWith({ left: 0.2, top: 0.2, right: 0.6, bottom: 0.9 });
+    expect(onSave).toHaveBeenCalledWith([{ left: 0.2, top: 0.2, right: 0.6, bottom: 0.9 }]);
+  });
+
+  it('adds a second zone, drawn without changing the first', () => {
+    const onSave = vi.fn();
+    render(<ZoneEditor zones={[zone]} onSave={onSave} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zweite Zone' }));
+    drag([800, 100], [950, 400]);
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith([zone, { left: 0.8, top: 0.2, right: 0.95, bottom: 0.8 }]);
+  });
+
+  it('draws the zone chosen and removes one', () => {
+    const onSave = vi.fn();
+    const other = { left: 0.75, top: 0.2, right: 0.95, bottom: 0.8 };
+    render(<ZoneEditor zones={[zone, other]} onSave={onSave} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zone 1 entfernen' }));
+    expect(screen.queryByRole('button', { name: 'Zone 2' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(onSave).toHaveBeenCalledWith([other]);
   });
 
   it('does not save a zone that is too small', () => {
-    render(<ZoneEditor zone={zone} onSave={vi.fn()} onCancel={vi.fn()} />);
+    render(<ZoneEditor zones={[zone]} onSave={vi.fn()} onCancel={vi.fn()} />);
     const surface = drawingSurface();
 
     fireEvent.pointerDown(surface, { clientX: 500, clientY: 250, pointerId: 1 });
@@ -39,7 +66,7 @@ describe('ZoneEditor', () => {
   it('cancels without saving', () => {
     const onSave = vi.fn();
     const onCancel = vi.fn();
-    render(<ZoneEditor zone={zone} onSave={onSave} onCancel={onCancel} />);
+    render(<ZoneEditor zones={[zone]} onSave={onSave} onCancel={onCancel} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
 

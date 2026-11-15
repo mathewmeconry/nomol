@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.margelo.nitro.camera.HybridFrameSpec
 import com.margelo.nitro.camera.public.NativeFrame
@@ -18,8 +19,8 @@ import kotlin.math.min
 
 /**
  * MediaPipe Pose Landmarker on VisionCamera frames. It has no region of interest for poses, so
- * the crop (where to look, `detectionArea` in core) is cut out here, turned upright and shrunk;
- * all coordinate math stays in core.
+ * the crops (where to look, `detectionAreas` in core) are cut out here, turned upright and
+ * shrunk; all coordinate math stays in core.
  */
 @Keep
 @DoNotStrip
@@ -44,7 +45,7 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
 
   override fun detect(
     frame: HybridFrameSpec,
-    crop: Crop,
+    crops: Array<Crop>,
     rotation: Double,
     mirrored: Boolean,
     timeMs: Double,
@@ -55,6 +56,24 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     val image = (frame as NativeFrame).image
     val whole = image.toBitmap()
     if (stillPath != null) saveStill(whole, rotation, stillPath)
+    val found = crops.map { crop -> detectIn(whole, crop, rotation, mirrored, timeMs) }
+    whole.recycle()
+
+    val result = flatten(found.flatten())
+    val ms = (System.nanoTime() - start) / 1e6 / max(crops.size, 1)
+    if (++count % LOG_EVERY == 0) {
+      Log.d(TAG, "${image.width}x${image.height} ${crops.size} crops turned $rotation: ${"%.1f".format(ms)} ms each, ${found.sumOf { it.size }} poses")
+    }
+    return Detection(result, found.map { it.size.toDouble() }.toDoubleArray(), ms)
+  }
+
+  private fun detectIn(
+    whole: Bitmap,
+    crop: Crop,
+    rotation: Double,
+    mirrored: Boolean,
+    timeMs: Double,
+  ): List<List<NormalizedLandmark>> {
     // MediaPipe shrinks its input to 256 px anyway; a smaller bitmap is cheaper to hand over.
     val scale = min(1f, MAX_SIDE / max(crop.width, crop.height).toFloat())
     val matrix =
@@ -72,24 +91,18 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
         matrix,
         true,
       )
-    whole.recycle()
-
-    val landmarks =
-      synchronized(lock) {
-        val landmarker = landmarker ?: return Detection(DoubleArray(0), 0.0)
-        // MediaPipe refuses timestamps that don't grow.
+    try {
+      return synchronized(lock) {
+        val landmarker = landmarker ?: return emptyList()
+        // MediaPipe refuses timestamps that don't grow, also between the crops of one frame.
         val time = max(timeMs.toLong(), lastTimeMs + 1)
         lastTimeMs = time
         landmarker.run { it.detectForVideo(BitmapImageBuilder(input).build(), time) }.landmarks()
       }
-    input.recycle()
-
-    val result = flatten(landmarks)
-    val ms = (System.nanoTime() - start) / 1e6
-    if (++count % LOG_EVERY == 0) {
-      Log.d(TAG, "${image.width}x${image.height} crop ${crop.width.toInt()}x${crop.height.toInt()} turned $rotation: ${"%.1f".format(ms)} ms, ${landmarks.size} poses")
+    } finally {
+      // createBitmap may hand back the frame's own bitmap, recycled after all crops.
+      if (input !== whole) input.recycle()
     }
-    return Detection(result, ms)
   }
 
   /**

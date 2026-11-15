@@ -106,10 +106,11 @@ export type Frame = {
   time: number;
   /** Normalized image coordinates, as MediaPipe returns them. */
   poses: Pose[];
-  zone: Zone;
-  /** "Aufnahme starten" was tapped and is waiting for a person in the start zone. */
+  /** The start zones; someone in any of them can start a recording. */
+  zones: Zone[];
+  /** "Aufnahme starten" was tapped and is waiting for a person in a start zone. */
   armed: boolean;
-  /** Set when recordings start by themselves as someone runs into the start zone. */
+  /** Set when recordings start by themselves as someone runs into a start zone. */
   runUp: RunUp | null;
   /** Image width / height. */
   aspectRatio: number;
@@ -134,6 +135,8 @@ type Idle = SignState & { kind: 'idle'; recent: Seen[] };
 
 type Recording = SignState & {
   kind: 'recording';
+  /** The start zone the gymnast started in: its bottom edge is their floor line. */
+  zone: Zone;
   target: Point;
   /** Torso length when last seen. */
   size: number;
@@ -160,7 +163,7 @@ type Recording = SignState & {
 export type SessionState = Idle | Recording;
 
 export type SessionEvent =
-  | { type: 'start'; reason: 'sign' | 'button' | 'runUp'; pose: Pose }
+  | { type: 'start'; reason: 'sign' | 'button' | 'runUp'; pose: Pose; zone: Zone }
   | { type: 'stop'; reason: 'sign' | 'idle' | 'lost' };
 
 export type StepResult = {
@@ -209,7 +212,8 @@ function justUsed({ signSince, signSeenAt }: SignState): SignState {
  */
 export function step(state: SessionState, frame: Frame): StepResult {
   const poses = frame.poses.map((pose) => scalePose(pose, frame.aspectRatio));
-  const scaled: Frame = { ...frame, poses, zone: scaleZone(frame.zone, frame.aspectRatio) };
+  const zones = frame.zones.map((zone) => scaleZone(zone, frame.aspectRatio));
+  const scaled: Frame = { ...frame, poses, zones };
   const result = state.kind === 'idle' ? stepIdle(state, scaled) : stepRecording(state, scaled);
 
   const original = (pose: Pose) => frame.poses[poses.indexOf(pose)];
@@ -217,30 +221,43 @@ export function step(state: SessionState, frame: Frame): StepResult {
     state: result.state,
     event:
       result.event?.type === 'start'
-        ? { ...result.event, pose: original(result.event.pose) }
+        ? {
+            ...result.event,
+            pose: original(result.event.pose),
+            zone: frame.zones[zones.indexOf(result.event.zone)],
+          }
         : result.event,
     target: result.target && original(result.target),
   };
 }
 
+/** The start zone `pose` is in, if any; the first one where zones overlap. */
+function zoneOf(pose: Pose, zones: Zone[]): Zone | undefined {
+  return zones.find((zone) => isInZone(pose, zone));
+}
+
+/** Starts recording `pose`, who is in a start zone of `frame`. */
 function startRecording(
   pose: Pose,
-  poses: Pose[],
-  time: number,
+  frame: Frame,
   sign: SignState,
-  lastElementAt: number | null = null,
-): Recording {
-  return {
+  reason: 'sign' | 'button' | 'runUp',
+): StepResult {
+  const zone = zoneOf(pose, frame.zones)!;
+  const state: Recording = {
     kind: 'recording',
+    zone,
     target: torsoCenter(pose),
     size: torsoLength(pose),
-    lastSeen: time,
-    others: othersThan(pose, poses),
-    lastElementAt,
+    lastSeen: frame.time,
+    others: othersThan(pose, frame.poses),
+    // An automatic start counts as an element (see `lastElementAt`).
+    lastElementAt: reason === 'runUp' ? frame.time : null,
     sizes: [torsoLength(pose)],
     missed: 0,
     ...sign,
   };
+  return { state, event: { type: 'start', reason, pose, zone }, target: pose };
 }
 
 type Sighting<P extends Person> = { time: number; person: P; people: P[] };
@@ -321,7 +338,7 @@ function runDirection(runUp: RunUp, trail: { person: Person }[]): Point | null {
 }
 
 function stepIdle(state: Idle, frame: Frame): StepResult {
-  const inZone = frame.poses.filter((pose) => isInZone(pose, frame.zone));
+  const inZone = frame.poses.filter((pose) => zoneOf(pose, frame.zones));
   const signer = inZone.find(isStartSign);
   const { held, ...sign } = holdSign(state, signer !== undefined, frame.time);
   const runUp = frame.runUp;
@@ -337,13 +354,11 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
     : [];
 
   if (frame.armed && inZone.length > 0) {
-    const center = zoneCenter(frame.zone);
-    const pose = nearest(inZone, center);
-    return {
-      state: startRecording(pose, frame.poses, frame.time, sign),
-      event: { type: 'start', reason: 'button', pose },
-      target: pose,
-    };
+    // Whoever is nearest the middle of their zone.
+    const offCenter = (pose: Pose) =>
+      distance(torsoCenter(pose), zoneCenter(zoneOf(pose, frame.zones)!));
+    const pose = inZone.reduce((best, pose) => (offCenter(pose) < offCenter(best) ? pose : best));
+    return startRecording(pose, frame, sign, 'button');
   }
 
   const runner =
@@ -352,22 +367,12 @@ function stepIdle(state: Idle, frame: Frame): StepResult {
       const start = { time: frame.time, person: people[frame.poses.indexOf(pose)], people };
       return runTrail(start, state.recent, runUp).length >= RUN_MIN_SIGHTINGS;
     });
-  if (runner) {
-    return {
-      state: startRecording(runner, frame.poses, frame.time, sign, frame.time),
-      event: { type: 'start', reason: 'runUp', pose: runner },
-      target: runner,
-    };
-  }
+  if (runner) return startRecording(runner, frame, sign, 'runUp');
 
   if (!signer || !held) {
     return { state: { kind: 'idle', ...sign, recent }, event: null, target: null };
   }
-  return {
-    state: startRecording(signer, frame.poses, frame.time, justUsed(sign)),
-    event: { type: 'start', reason: 'sign', pose: signer },
-    target: signer,
-  };
+  return startRecording(signer, frame, justUsed(sign), 'sign');
 }
 
 function stepRecording(state: Recording, frame: Frame): StepResult {
@@ -416,7 +421,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
       target: pose,
     };
   }
-  const lastElementAt = isOnFloor(pose, frame.zone) ? state.lastElementAt : frame.time;
+  const lastElementAt = isOnFloor(pose, state.zone) ? state.lastElementAt : frame.time;
   const idleMs = frame.runUp === 'left' || frame.runUp === 'right' ? RUN_UP_IDLE_MS : IDLE_MS;
   if (lastElementAt !== null && frame.time - lastElementAt >= idleMs) {
     return { state: initialSession, event: { type: 'stop', reason: 'idle' }, target: pose };

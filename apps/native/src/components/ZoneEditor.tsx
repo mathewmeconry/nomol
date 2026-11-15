@@ -1,5 +1,5 @@
 import type { Point } from '@nomol/core/detection/pose';
-import { normalizeZone, type Zone } from '@nomol/core/detection/zone';
+import { MAX_ZONES, normalizeZone, secondZone, type Zone } from '@nomol/core/detection/zone';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
@@ -9,18 +9,32 @@ import { colors, styles as shared, type Frame } from './theme';
 const MIN_SIZE = 0.05;
 
 type Props = {
-  /** Where the camera picture is on the screen; the zone is relative to it. */
+  /** Where the camera picture is on the screen; the zones are relative to it. */
   picture: Frame;
-  zone: Zone;
-  onSave: (zone: Zone) => void;
+  zones: Zone[];
+  onSave: (zones: Zone[]) => void;
   onCancel: () => void;
 };
 
-/** Coach draws the start zone on the live image. Its bottom edge marks the floor. */
-export default function ZoneEditor({ picture, zone, onSave, onCancel }: Props) {
-  const [draft, setDraft] = useState<Zone>(zone);
+function isTooSmall(zone: Zone) {
+  return zone.right - zone.left < MIN_SIZE || zone.bottom - zone.top < MIN_SIZE;
+}
+
+/**
+ * Coach draws the start zones on the live image; their bottom edges mark the floor. Dragging
+ * draws the selected one; a second one is for gymnasts starting at the other end of the floor
+ * track.
+ */
+export default function ZoneEditor({ picture, zones, onSave, onCancel }: Props) {
+  const [drafts, setDrafts] = useState<Zone[]>(zones);
+  const [selected, setSelected] = useState(0);
   const [anchor, setAnchor] = useState<Point | null>(null);
-  const tooSmall = draft.right - draft.left < MIN_SIZE || draft.bottom - draft.top < MIN_SIZE;
+  const tooSmall = drafts.some(isTooSmall);
+  const several = drafts.length > 1;
+
+  function draw(zone: Zone) {
+    setDrafts(drafts.map((draft, i) => (i === selected ? zone : draft)));
+  }
 
   // The surface's children don't take touches, so locationX/Y are always relative to it.
   function toPoint(event: GestureResponderEvent): Point {
@@ -40,28 +54,33 @@ export default function ZoneEditor({ picture, zone, onSave, onCancel }: Props) {
         onResponderGrant={(event) => {
           const point = toPoint(event);
           setAnchor(point);
-          setDraft(normalizeZone(point, point));
+          draw(normalizeZone(point, point));
         }}
         onResponderMove={(event) => {
-          if (anchor) setDraft(normalizeZone(anchor, toPoint(event)));
+          if (anchor) draw(normalizeZone(anchor, toPoint(event)));
         }}
         onResponderRelease={() => setAnchor(null)}
         onResponderTerminate={() => setAnchor(null)}
       >
-        <View
-          pointerEvents="none"
-          style={[
-            styles.draft,
-            {
-              left: draft.left * picture.width,
-              top: draft.top * picture.height,
-              width: (draft.right - draft.left) * picture.width,
-              height: (draft.bottom - draft.top) * picture.height,
-            },
-          ]}
-        >
-          <Text style={styles.floor}>Boden</Text>
-        </View>
+        {drafts.map((draft, i) => (
+          <View
+            key={i}
+            pointerEvents="none"
+            style={[
+              styles.draft,
+              i !== selected && styles.otherDraft,
+              {
+                left: draft.left * picture.width,
+                top: draft.top * picture.height,
+                width: (draft.right - draft.left) * picture.width,
+                height: (draft.bottom - draft.top) * picture.height,
+              },
+            ]}
+          >
+            {several && <Text style={styles.number}>{i + 1}</Text>}
+            <Text style={[styles.floor, i !== selected && styles.otherFloor]}>Boden</Text>
+          </View>
+        ))}
       </View>
 
       {/*
@@ -72,17 +91,61 @@ export default function ZoneEditor({ picture, zone, onSave, onCancel }: Props) {
         pointerEvents={anchor ? 'none' : 'auto'}
         style={[
           styles.bar,
-          draft.bottom > 0.5 ? { top: 12 } : { bottom: 12 },
+          drafts[selected].bottom > 0.5 ? { top: 12 } : { bottom: 12 },
           anchor && { opacity: 0 },
         ]}
       >
         <Text style={styles.text}>
           {tooSmall
             ? 'Zu klein. Zieh einen grösseren Bereich auf.'
-            : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
+            : several
+              ? `Zieh Startzone ${selected + 1} auf. Die untere Kante ist der Boden.`
+              : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
         </Text>
         <View style={styles.buttons}>
-          <Pressable style={shared.button} onPress={() => setDraft(DEFAULT_ZONE)}>
+          {several &&
+            drafts.map((_draft, i) => (
+              <Pressable
+                key={i}
+                style={[shared.button, i === selected && shared.primaryButton]}
+                accessibilityState={{ selected: i === selected }}
+                onPress={() => setSelected(i)}
+              >
+                <Text style={[shared.buttonText, i === selected && shared.primaryButtonText]}>
+                  Zone {i + 1}
+                </Text>
+              </Pressable>
+            ))}
+          {several ? (
+            <Pressable
+              style={shared.button}
+              onPress={() => {
+                setDrafts(drafts.filter((_draft, i) => i !== selected));
+                setSelected(0);
+              }}
+            >
+              <Text style={shared.buttonText}>Zone {selected + 1} entfernen</Text>
+            </Pressable>
+          ) : (
+            drafts.length < MAX_ZONES && (
+              <Pressable
+                style={shared.button}
+                onPress={() => {
+                  setDrafts([...drafts, secondZone(drafts[0])]);
+                  setSelected(drafts.length);
+                }}
+              >
+                <Text style={shared.buttonText}>Zweite Zone</Text>
+              </Pressable>
+            )
+          )}
+          <Pressable
+            style={shared.button}
+            onPress={() => {
+              setDrafts([DEFAULT_ZONE]);
+              setSelected(0);
+            }}
+          >
             <Text style={shared.buttonText}>Standard</Text>
           </Pressable>
           <Pressable style={shared.button} onPress={onCancel}>
@@ -91,7 +154,7 @@ export default function ZoneEditor({ picture, zone, onSave, onCancel }: Props) {
           <Pressable
             style={[shared.button, shared.primaryButton, tooSmall && shared.disabled]}
             disabled={tooSmall}
-            onPress={() => onSave(draft)}
+            onPress={() => onSave(drafts)}
           >
             <Text style={[shared.buttonText, shared.primaryButtonText]}>Speichern</Text>
           </Pressable>
@@ -111,6 +174,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 189, 248, 0.15)',
     alignItems: 'center',
   },
+  otherDraft: {
+    borderColor: 'rgba(203, 213, 225, 0.6)',
+    backgroundColor: 'rgba(203, 213, 225, 0.1)',
+  },
+  number: {
+    position: 'absolute',
+    top: 2,
+    left: 6,
+    color: '#f1f5f9',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   floor: {
     position: 'absolute',
     bottom: -24,
@@ -122,6 +197,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  otherFloor: { backgroundColor: 'rgba(203, 213, 225, 0.8)' },
   bar: {
     position: 'absolute',
     left: 12,
@@ -136,5 +212,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
   },
   text: { flexGrow: 1, flexBasis: 200, color: '#cbd5e1', fontSize: 14 },
-  buttons: { flexDirection: 'row', gap: 8 },
+  buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

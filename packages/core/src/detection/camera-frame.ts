@@ -93,6 +93,20 @@ export function posesInArea(landmarks: number[], area: Zone): Pose[] {
 }
 
 /**
+ * `posesInArea` for several crops: `counts` says how many of the poses in `landmarks` each of
+ * `areas` found, in order.
+ */
+export function posesInAreas(landmarks: number[], counts: number[], areas: Zone[]): Pose[][] {
+  let start = 0;
+  return areas.map((area, i) => {
+    const end = start + counts[i] * LANDMARKS * 3;
+    const poses = posesInArea(landmarks.slice(start, end), area);
+    start = end;
+    return poses;
+  });
+}
+
+/**
  * The landmark at index i of a mirrored pose: in a mirrored picture MediaPipe takes the left side
  * of the body for the right, so pairs swap (eyes 1–3 with 4–6, then left/right alternating from
  * the ears on).

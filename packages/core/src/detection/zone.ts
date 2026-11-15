@@ -1,4 +1,15 @@
-import { LM, bodySize, higherAnkleY, hipCenter, type Point, type Pose } from './pose';
+import {
+  LM,
+  bodySize,
+  distance,
+  higherAnkleY,
+  hipCenter,
+  scalePose,
+  torsoCenter,
+  torsoLength,
+  type Point,
+  type Pose,
+} from './pose';
 
 /**
  * Start zone drawn by the coach on the live image, in normalized image coordinates.
@@ -48,36 +59,73 @@ export function scaleZone(zone: Zone, aspectRatio: number): Zone {
 const RUN_UP_MARGIN = 0.25;
 
 /**
- * The part of the picture detection looks at, widened to a square. MediaPipe shrinks whatever
+ * At most this many start zones (on the floor track gymnasts start at either end). Waiting, each
+ * costs a detection per frame (`detectionAreas`).
+ */
+export const MAX_ZONES = 2;
+
+/** `mergeAreas`: torso centres closer than this many torso lengths are the same person. */
+const SAME_POSE_TORSOS = 0.5;
+
+/**
+ * The parts of the picture detection looks at, each widened to a square. MediaPipe shrinks whatever
  * it gets to a 256 px square, so on a 16:9 picture someone far away was only a few pixels tall:
  * on the rings, a gymnast showing the sign at the back of the hall was found in 64 of 89 frames,
  * cropped to his zone in 88. A narrower area only adds letterboxing, hence the square.
  *
- * Waiting, the start zone (with a margin for an automatic start, `runUp`); recording, only
+ * Waiting, each start zone (with a margin for an automatic start, `runUp`); recording, only
  * around the gymnast (`gymnast`, see `gymnastArea`). On the floor at the back of the hall with
  * the wide lens (gymnasts ~0.15 image heights tall, 9 clips, 5 frames per second), MediaPipe
  * found people in the zone 459 times given the zone, 94 times with the margin; while
  * recording, the zone plus everywhere the gymnast had been grew to the whole picture height
- * within seconds and lost them.
+ * within seconds and lost them. Two zones at either end of the floor track would together span
+ * the picture, hence one area each.
  */
-export function detectionArea(
-  zone: Zone,
+export function detectionAreas(
+  zones: Zone[],
   aspectRatio: number,
   gymnast: Zone | null,
   runUp: boolean,
-): Zone {
+): Zone[] {
+  if (gymnast) return [square(gymnast, aspectRatio)];
   const margin = runUp ? RUN_UP_MARGIN : 0;
-  const marginX = (zone.right - zone.left) * margin;
-  const marginY = (zone.bottom - zone.top) * margin;
-  const box = scaleZone(
-    gymnast ?? {
+  return zones.map((zone) => {
+    const marginX = (zone.right - zone.left) * margin;
+    const marginY = (zone.bottom - zone.top) * margin;
+    const around = {
       left: zone.left - marginX,
       top: zone.top - marginY,
       right: zone.right + marginX,
       bottom: zone.bottom + marginY,
-    },
-    aspectRatio,
-  );
+    };
+    return square(around, aspectRatio);
+  });
+}
+
+/**
+ * The poses found in each of `detectionAreas`, together. Someone where two areas overlap is
+ * found in both, nearly the same; only the first of them is kept.
+ */
+export function mergeAreas(found: Pose[][], aspectRatio: number): Pose[] {
+  const kept: Pose[] = [];
+  for (const poses of found) {
+    const earlier = kept.map((pose) => scalePose(pose, aspectRatio));
+    for (const pose of poses) {
+      const scaled = scalePose(pose, aspectRatio);
+      const twice = earlier.some(
+        (other) =>
+          distance(torsoCenter(other), torsoCenter(scaled)) <
+          SAME_POSE_TORSOS * Math.max(torsoLength(other), torsoLength(scaled)),
+      );
+      if (!twice) kept.push(pose);
+    }
+  }
+  return kept;
+}
+
+/** `area` widened to a square (as far as the picture allows) and kept inside the picture. */
+function square(area: Zone, aspectRatio: number): Zone {
+  const box = scaleZone(area, aspectRatio);
   const height = Math.min(Math.max(box.bottom - box.top, box.right - box.left), 1);
   const width = Math.min(Math.max(box.right - box.left, height), aspectRatio);
   const left = clamp((box.left + box.right - width) / 2, 0, aspectRatio - width);
@@ -96,6 +144,14 @@ function clamp(value: number, min: number, max: number): number {
 
 export function zoneCenter(zone: Zone): Point {
   return { x: (zone.left + zone.right) / 2, y: (zone.top + zone.bottom) / 2 };
+}
+
+/**
+ * Where a second zone starts out in the editor: `zone` mirrored left to right, a guess for the
+ * other end of the floor track.
+ */
+export function secondZone(zone: Zone): Zone {
+  return { ...zone, left: 1 - zone.right, right: 1 - zone.left };
 }
 
 export function normalizeZone(a: Point, b: Point): Zone {

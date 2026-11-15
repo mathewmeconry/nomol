@@ -25,7 +25,7 @@ import {
   type RunUp,
   type SessionState,
 } from '@nomol/core/detection/session';
-import { detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
+import { detectionAreas, isInZone, type Zone } from '@nomol/core/detection/zone';
 import { drawPersonBox, drawStartSign, drawZone, prepareCanvas } from '~/lib/draw';
 import {
   addPreroll,
@@ -41,7 +41,7 @@ import { startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording } from '~/lib/recording/recorder.client';
 import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
 import { cn } from 'cn';
-import { loadRunUp, loadZone, saveRunUp, saveZone } from '~/lib/zone-storage';
+import { loadRunUp, loadZones, saveRunUp, saveZones } from '~/lib/zone-storage';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
 import { screenLayout } from '@nomol/core/layout';
 
@@ -79,14 +79,14 @@ export default function Tablet() {
   const activeRef = useRef<ActiveRecording | null>(null);
   const prerollRef = useRef<Preroll | null>(null);
   const seenRef = useRef<Seen[]>([]);
-  /** Where detection looks (`detectionArea`); the whole picture until the first frame. */
-  const areaRef = useRef<Zone>({ left: 0, top: 0, right: 1, bottom: 1 });
+  /** Where detection looks (`detectionAreas`); the whole picture until the first frame. */
+  const areasRef = useRef<Zone[]>([{ left: 0, top: 0, right: 1, bottom: 1 }]);
   /** Capture time of the last detected frame: where a recording stopped by hand ends. */
   const lastFrameTimeRef = useRef(0);
   const clipStripScrollRef = useRef(0);
 
-  const [zone, setZone] = useState<Zone>(() =>
-    typeof window === 'undefined' ? DEFAULT_ZONE : loadZone(),
+  const [zones, setZones] = useState<Zone[]>(() =>
+    typeof window === 'undefined' ? [DEFAULT_ZONE] : loadZones(),
   );
   const [runUp, setRunUp] = useState<RunUp | null>(() =>
     typeof window === 'undefined' ? null : loadRunUp(),
@@ -175,7 +175,7 @@ export default function Tablet() {
       const result = step(sessionRef.current, {
         time,
         poses,
-        zone,
+        zones,
         armed: armedAt !== null,
         runUp,
         aspectRatio,
@@ -195,7 +195,7 @@ export default function Tablet() {
         const active = beginRecording(
           started.recording,
           started.startedAt - (deliveredAt - time),
-          zone,
+          result.event.zone,
           aspectRatio,
           { startReason: result.event.reason, runUp },
         );
@@ -212,8 +212,8 @@ export default function Tablet() {
         recordStill(active, frame, time);
       }
       if (result.event?.type === 'stop') void finishRecording(time);
-      areaRef.current = detectionArea(
-        zone,
+      areasRef.current = detectionAreas(
+        zones,
         aspectRatio,
         gymnastArea(result.state, aspectRatio),
         runUp !== null,
@@ -235,12 +235,16 @@ export default function Tablet() {
       const surface = canvas && prepareCanvas(canvas);
       if (!surface) return;
       const { ctx, width, height } = surface;
-      drawZone(ctx, zone, width, height);
-      if (!activeRef.current && !runUp) drawStartSign(ctx, zone, width, height, performance.now());
+      for (const zone of zones) {
+        drawZone(ctx, zone, width, height);
+        if (!activeRef.current && !runUp) {
+          drawStartSign(ctx, zone, width, height, performance.now());
+        }
+      }
       if (activeRef.current && result.target) {
         drawPersonBox(ctx, result.target, width, height, '#ff6b70', 'Aufnahme');
       } else if (!activeRef.current) {
-        for (const pose of poses.filter((p) => isInZone(p, zone))) {
+        for (const pose of poses.filter((p) => zones.some((zone) => isInZone(p, zone)))) {
           drawPersonBox(ctx, pose, width, height, '#5ee6c8', 'In Startzone');
         }
       }
@@ -267,7 +271,7 @@ export default function Tablet() {
     function detect({ frame, time, deliveredAt }: Waiting) {
       busy = true;
       running
-        .detect(frame, time, areaRef.current)
+        .detect(frame, time, areasRef.current)
         .then(({ frame: detected, poses }) => {
           if (!stopped) onFrame(detected, time, deliveredAt, poses);
           detected.close();
@@ -461,12 +465,12 @@ export default function Tablet() {
           <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
           {editingZone && (
             <ZoneEditor
-              zone={zone}
+              zones={zones}
               dock={dock && stripSlot}
               onCancel={() => setEditingZone(false)}
               onSave={(next) => {
-                saveZone(next);
-                setZone(next);
+                saveZones(next);
+                setZones(next);
                 setEditingZone(false);
               }}
             />

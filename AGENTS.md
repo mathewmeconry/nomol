@@ -37,12 +37,15 @@ Requirements, as agreed with the owner:
 - **Trimming:** the replay starts 1.5 s before the first element and loops up to 2 s after the
   last one (`routineRange`), cutting the wait and the walk-away. The full video is kept, exported
   and can still be scrubbed.
-- **Start zone:** drawn by the coach on the live image, once per device. Its bottom edge is the
-  floor line used for the stop rule and trimming; it must be where the feet are, i.e. where
+- **Start zone:** drawn by the coach on the live image, once per device. A second one can be
+  added ("Zweite Zone"; on the floor track gymnasts start at either end); a sign, button or
+  automatic start counts in either. Its bottom edge is the
+  floor line used for the stop rule and trimming (the zone the gymnast started in); it must be
+  where the feet are, i.e. where
   people stand after the element: at Sprung on the landing mat or behind it, not the mat's front
   edge (drawn there, nobody ever counted as standing and the next gymnast landed in the same
-  clip). Detection only looks at the zone (with a margin for an automatic start) and, while
-  recording, around the gymnast (`detectionArea`, see Stack).
+  clip). Detection only looks at the zones, each on its own (with a margin for an automatic
+  start), and, while recording, around the gymnast (`detectionAreas`, see Stack).
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
   Chrome on Android usually lists only front and back; there a "Weitwinkel (0,5×)" switch reaches
   the ultra-wide lens if the phone allows zooming below 1×.
@@ -112,11 +115,13 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   VIDEO mode, GPU delegate with CPU fallback, up to 4 poses) in a Nitro module,
   `packages/native-modules` (`@nomol/native-modules`, Kotlin; also the start beep, a system
   `ToneGenerator`). MediaPipe for Android takes no region of interest for poses, so Kotlin cuts
-  the crop out of the frame (`ImageProxy.toBitmap`, then one `Bitmap.createBitmap` that crops,
-  turns upright, mirrors and shrinks to ≤ 512 px) and returns flat landmarks normalized to that
-  crop; all coordinate math is in core (`camera-frame.ts`): `bufferCrop` maps the
-  `detectionArea` (picture coordinates, as on screen) to buffer pixels by the frame's rotation
-  and mirroring, `cropArea` and `posesInArea` map the landmarks back. Detection runs
+  the crops out of the frame (`ImageProxy.toBitmap` once, then per crop one
+  `Bitmap.createBitmap` that crops, turns upright, mirrors and shrinks to ≤ 512 px) and returns
+  flat landmarks normalized to each crop with the number of poses per crop; all coordinate math
+  is in core (`camera-frame.ts`): `bufferCrop` maps each of the `detectionAreas` (picture
+  coordinates, as on screen) to buffer pixels by the frame's rotation and mirroring, `cropArea`
+  and `posesInAreas` map the landmarks back, `mergeAreas` drops a person found twice where
+  areas overlap. Detection runs
   synchronously in VisionCamera's frame worklet on the camera thread (`useFrameOutput`,
   react-native-worklets; core functions called there need a `'worklet'` directive), dropping
   frames while busy, so the newest one is detected next; results go to the JS thread with
@@ -224,12 +229,15 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   blocked drawing (on a warm phone 100–250 ms per frame, the replay stuttered constantly); an
   `ImageBitmap` copy of the video cost a third of the detections on a Pixel 8. MediaPipe's
   `importScripts` is shimmed for module workers (`landmarker.client.ts`). WASM and model load
-  from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 100 ms per frame
+  from CDNs (`pose-detector.client.ts`). Heavy model by default; if it takes > 100 ms per area
   (median over 3 s of detection, checked again and again since phones slow down as they heat
   up), the lite model takes over. MediaPipe drives
-  everything live (sign, tracking, stop, trimming). It only gets part of each frame
-  (`detectionArea`): the start zone (for an automatic start plus a quarter of its size on each
-  side, where the runner comes from), widened to a square; while recording only around the
+  everything live (sign, tracking, stop, trimming). It only gets parts of each frame
+  (`detectionAreas`): each start zone on its own (for an automatic start plus a quarter of its
+  size on each side, where the runner comes from), widened to a square, one detection per zone
+  and frame (two zones at either end of the floor track together span the picture, where the
+  gymnasts would be tiny); MediaPipe's timestamps grow by at least 1 ms per detection, also
+  between the zones of one frame (it counts whole ms); while recording only around the
   gymnast's last sighting, 4 of their torso lengths on each side (`gymnastArea`; the median of
   the last sightings, changing size while they are missing). MediaPipe shrinks its
   input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
@@ -260,8 +268,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 `packages/core/src/` (pure, tested, shared):
 
 - `detection/`: `pose.ts` landmarks and body measures, `session.ts` decides when recordings
-  start and stop (`step(state, frame)`), `sign.ts` the start sign, `zone.ts` the start zone and
-  floor line, `camera-frame.ts` crops of camera buffers (Android), `model-speed.ts` the heavy →
+  start and stop (`step(state, frame)`) and where to look for the gymnast (`gymnastArea`),
+  `sign.ts` the start sign, `zone.ts` the start zones, floor line and detection areas,
+  `camera-frame.ts` crops of camera buffers (Android), `model-speed.ts` the heavy →
   lite switch.
 - `recording/`: `clip.ts` clips, trimming (`routineRange`) and skeleton interpolation
   (`poseAt`), `export.ts` the export format (`exportData`, `parseExport`), `preroll.ts` the
@@ -272,8 +281,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 - `start-figure.ts`: the animated start-sign figure in the start zone, drawn by both apps
   (web canvas, Android `StartSign.tsx` with turned views).
 - `layout.ts`: `screenLayout`, where the picture and the docked controls go (see Screen space).
-- `settings.ts`: per-device settings (zone, start mode, camera, wide angle, beep): storage keys,
-  parsing with fallbacks, default zone.
+- `settings.ts`: per-device settings (zones, start mode, camera, wide angle, beep): storage keys,
+  parsing with fallbacks (a single zone stored before there could be two), default zone.
 - `tests/poses.ts`: builds synthetic poses for tests.
 
 `apps/native/`:

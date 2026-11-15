@@ -35,6 +35,7 @@ function run(
     aspectRatio?: number;
     /** Detections per second. */
     fps?: number;
+    zones?: Zone[];
   } = {},
 ) {
   let state = options.from ?? initialSession;
@@ -44,7 +45,7 @@ function run(
     const result = step(state, {
       time,
       poses: scene(time),
-      zone,
+      zones: options.zones ?? [zone],
       armed: options.armed ?? false,
       runUp: options.runUp ?? null,
       aspectRatio: options.aspectRatio ?? 1,
@@ -124,6 +125,48 @@ describe('starting', () => {
   it('waits after the button until someone is in the start zone', () => {
     const { events } = run(() => [makePose({ x: 0.8, feetY: 0.9 })], 1000, { armed: true });
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('several start zones', () => {
+  // The floor track, started from either end.
+  const left: Zone = { left: 0.05, top: 0.3, right: 0.3, bottom: 0.9 };
+  const right: Zone = { left: 0.7, top: 0.2, right: 0.95, bottom: 0.7 };
+  const zones = [left, right];
+
+  it('starts with the sign in any of them', () => {
+    const { events } = run(() => [makePose({ x: 0.8, feetY: 0.7, kind: 'sign' })], 1500, {
+      zones,
+    });
+    expect(events.map((e) => e.event.type)).toEqual(['start']);
+  });
+
+  it('tells which zone the recording started in, as given', () => {
+    const { events } = run(() => [makePose({ x: 0.8, feetY: 0.7, kind: 'sign' })], 1500, {
+      zones,
+      aspectRatio: 16 / 9,
+    });
+    expect(events[0].event.type === 'start' && events[0].event.zone).toBe(right);
+  });
+
+  it('takes the floor line of the zone the gymnast started in', () => {
+    // Stands on the right zone's floor line, which is above the left one's.
+    const standing = () => [makePose({ x: 0.8, feetY: 0.7 })];
+    const started = run(standing, 0, { zones, armed: true });
+    const lifted = run(() => [makePose({ x: 0.8, feetY: 0.7, lift: 0.3 })], 1000, {
+      zones,
+      from: started.state,
+      start: 100,
+    });
+    const { events } = run(standing, LONG, { zones, from: lifted.state, start: 1200 });
+    expect(events.map((e) => e.event)).toEqual([{ type: 'stop', reason: 'idle' }]);
+  });
+
+  it('starts the button on whoever is nearest the middle of their zone', () => {
+    const scene = () => [makePose({ x: 0.27, feetY: 0.9 }), makePose({ x: 0.82, feetY: 0.7 })];
+    const { events } = run(scene, 0, { zones, armed: true });
+    const start = events[0].event;
+    expect(start.type === 'start' && start.zone).toBe(right);
   });
 });
 

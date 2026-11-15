@@ -1,16 +1,19 @@
 import { DEFAULT_ZONE } from '@nomol/core/settings';
-import { loadRunUp, loadZone, saveRunUp, saveZone } from './zone-storage';
+import { loadRunUp, loadZones, saveRunUp, saveZones } from './zone-storage';
 
 describe('zone storage', () => {
-  it('round-trips a saved zone', () => {
-    const zone = { left: 0.1, top: 0.2, right: 0.5, bottom: 0.9 };
-    saveZone(zone);
-    expect(loadZone()).toEqual(zone);
+  it('round-trips saved zones', () => {
+    const zones = [
+      { left: 0.1, top: 0.2, right: 0.3, bottom: 0.9 },
+      { left: 0.6, top: 0.2, right: 0.8, bottom: 0.9 },
+    ];
+    saveZones(zones);
+    expect(loadZones()).toEqual(zones);
   });
 
   it('falls back to the default zone for broken data', () => {
     localStorage.setItem('nomol.zone', 'not json');
-    expect(loadZone()).toEqual(DEFAULT_ZONE);
+    expect(loadZones()).toEqual([DEFAULT_ZONE]);
   });
 
   it('remembers the automatic start, off by default', () => {

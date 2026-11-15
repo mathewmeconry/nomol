@@ -7,7 +7,7 @@ import {
   type SessionEvent,
   type SessionState,
 } from '@nomol/core/detection/session';
-import { detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
+import { detectionAreas, isInZone, type Zone } from '@nomol/core/detection/zone';
 import type { Seen } from '@nomol/core/recording/preroll';
 import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -39,12 +39,12 @@ import {
   loadRunUp,
   loadSoundOn,
   loadWide,
-  loadZone,
+  loadZones,
   saveCameraId,
   saveRunUp,
   saveSoundOn,
   saveWide,
-  saveZone,
+  saveZones,
 } from '../lib/settings';
 import ClipPlayer from './ClipPlayer';
 import ClipStrip from './ClipStrip';
@@ -87,7 +87,7 @@ export default function Tablet() {
   const [cameraId, setCameraId] = useState(loadCameraId);
   const [wide, setWide] = useState(loadWide);
   const [soundOn, setSoundOn] = useState(loadSoundOn);
-  const [zone, setZone] = useState<Zone>(loadZone);
+  const [zones, setZones] = useState<Zone[]>(loadZones);
   const [runUp, setRunUp] = useState<RunUp | null>(loadRunUp);
   const [editingZone, setEditingZone] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -209,8 +209,8 @@ export default function Tablet() {
   // Paused while the coach draws the zone, so nobody starts a recording in the meantime.
   useEffect(() => {
     setLook(
-      detectionArea(
-        zone,
+      detectionAreas(
+        zones,
         aspectRatio,
         gymnastArea(sessionRef.current, aspectRatio),
         runUp !== null,
@@ -218,7 +218,7 @@ export default function Tablet() {
       mirrored,
       editingZone,
     );
-  }, [setLook, zone, aspectRatio, mirrored, editingZone, runUp]);
+  }, [setLook, zones, aspectRatio, mirrored, editingZone, runUp]);
 
   // Automatic starts come late, so the recorder keeps the last seconds encoded while waiting,
   // and the detections with stills of whoever is there.
@@ -254,7 +254,7 @@ export default function Tablet() {
     time: number,
     frameAspect: number,
   ) {
-    const active = startRecording(clipRecorder, time, zone, frameAspect, mirrored, {
+    const active = startRecording(clipRecorder, time, event.zone, frameAspect, mirrored, {
       startReason: event.reason,
       runUp,
     });
@@ -290,7 +290,7 @@ export default function Tablet() {
     const result = step(sessionRef.current, {
       time,
       poses,
-      zone,
+      zones,
       armed: armedAt !== null,
       runUp,
       aspectRatio: frameAspect,
@@ -310,7 +310,7 @@ export default function Tablet() {
 
     const recording = result.state.kind === 'recording';
     setLook(
-      detectionArea(zone, frameAspect, gymnastArea(result.state, frameAspect), runUp !== null),
+      detectionAreas(zones, frameAspect, gymnastArea(result.state, frameAspect), runUp !== null),
       mirrored,
       false,
     );
@@ -327,7 +327,7 @@ export default function Tablet() {
     setBoxes(
       recording
         ? { poses: result.target ? [result.target] : [], recording }
-        : { poses: poses.filter((pose) => isInZone(pose, zone)), recording },
+        : { poses: poses.filter((pose) => zones.some((zone) => isInZone(pose, zone))), recording },
     );
   }
 
@@ -403,25 +403,30 @@ export default function Tablet() {
             }
           })}
         />
-        {!editingZone && (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.zone,
-              {
-                left: zone.left * picture.width,
-                top: zone.top * picture.height,
-                width: (zone.right - zone.left) * picture.width,
-                height: (zone.bottom - zone.top) * picture.height,
-              },
-            ]}
-          >
-            <Text style={styles.zoneLabel}>STARTZONE</Text>
-          </View>
-        )}
-        {!editingZone && status !== 'recording' && runUp === null && (
-          <StartSign zone={zone} width={picture.width} height={picture.height} />
-        )}
+        {!editingZone &&
+          zones.map((zone, i) => (
+            <View
+              key={i}
+              pointerEvents="none"
+              style={[
+                styles.zone,
+                {
+                  left: zone.left * picture.width,
+                  top: zone.top * picture.height,
+                  width: (zone.right - zone.left) * picture.width,
+                  height: (zone.bottom - zone.top) * picture.height,
+                },
+              ]}
+            >
+              <Text style={styles.zoneLabel}>STARTZONE</Text>
+            </View>
+          ))}
+        {!editingZone &&
+          status !== 'recording' &&
+          runUp === null &&
+          zones.map((zone, i) => (
+            <StartSign key={i} zone={zone} width={picture.width} height={picture.height} />
+          ))}
         {!editingZone &&
           boxes.poses.map((pose, i) => (
             <PersonBox
@@ -448,11 +453,11 @@ export default function Tablet() {
       {editingZone ? (
         <ZoneEditor
           picture={picture}
-          zone={zone}
+          zones={zones}
           onCancel={() => setEditingZone(false)}
           onSave={(next) => {
-            saveZone(next);
-            setZone(next);
+            saveZones(next);
+            setZones(next);
             setEditingZone(false);
           }}
         />

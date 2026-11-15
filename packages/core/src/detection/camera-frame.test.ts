@@ -1,5 +1,5 @@
 import { makePose } from '../tests/poses';
-import { bufferCrop, cropArea, posesInArea, unmirrorPose } from './camera-frame';
+import { bufferCrop, cropArea, posesInArea, posesInAreas, unmirrorPose } from './camera-frame';
 import { LM } from './pose';
 
 describe('bufferCrop', () => {
@@ -82,6 +82,23 @@ describe('posesInArea', () => {
     expect(poses[0][0]).toEqual({ x: 0.4, y: 0.4, visibility: 0.9 });
     expect(poses[0][1].y).toBeCloseTo(0.8);
     expect(poses[1][0].x).toBeCloseTo(0.2);
+  });
+});
+
+describe('posesInAreas', () => {
+  it('places each crop’s poses in the picture', () => {
+    // Every landmark in the middle of its crop: two poses from the first crop, none from the
+    // second, one from the third.
+    const landmarks = Array.from({ length: 3 * 33 }, () => [0.5, 0.5, 1]).flat();
+    const areas = [
+      { left: 0, top: 0, right: 0.2, bottom: 0.2 },
+      { left: 0.4, top: 0, right: 0.6, bottom: 0.2 },
+      { left: 0.8, top: 0.8, right: 1, bottom: 1 },
+    ];
+    const found = posesInAreas(landmarks, [2, 0, 1], areas);
+    expect(found.map((poses) => poses.length)).toEqual([2, 0, 1]);
+    expect(found[0][1][0].x).toBeCloseTo(0.1);
+    expect(found[2][0][0].x).toBeCloseTo(0.9);
   });
 });
 

@@ -2,20 +2,24 @@
 import type { PoseLandmarker } from '@mediapipe/tasks-vision';
 import { createLandmarker } from './landmarker.client';
 import type { Pose } from '@nomol/core/detection/pose';
-import type { Zone } from '@nomol/core/detection/zone';
+import { mergeAreas, type Zone } from '@nomol/core/detection/zone';
 
 export type DetectRequest =
   | { id: number; type: 'load'; model: Uint8Array }
-  /** `area`: the part of the frame to detect in (`detectionArea`), normalized. */
-  | { id: number; type: 'detect'; frame: VideoFrame; time: number; area: Zone };
+  /** `areas`: the parts of the frame to detect in (`detectionAreas`), normalized. */
+  | { id: number; type: 'detect'; frame: VideoFrame; time: number; areas: Zone[] };
 
 export type DetectResponse =
   | { id: number; type: 'ready' }
-  /** `frame` comes back for recording: it's the picture these poses belong to. */
+  /**
+   * `frame` comes back for recording: it's the picture these poses belong to. `ms`: time per
+   * area.
+   */
   | { id: number; type: 'poses'; frame: VideoFrame; poses: Pose[]; ms: number }
   | { id: number; type: 'error'; message: string };
 
 let landmarker: PoseLandmarker | null = null;
+let lastTime = -Infinity;
 
 function reply(message: DetectResponse, transfer: Transferable[] = []) {
   self.postMessage(message, transfer);
@@ -65,8 +69,16 @@ self.onmessage = async (event: MessageEvent<DetectRequest>) => {
       return;
     }
     const start = performance.now();
-    const poses = detectIn(landmarker!, request.frame, request.area, request.time);
-    const ms = performance.now() - start;
+    const { frame, areas, time } = request;
+    const found = areas.map((area) => {
+      // MediaPipe refuses timestamps that don't grow, in whole ms, also between the areas of
+      // one frame.
+      lastTime = Math.max(Math.floor(time), lastTime + 1);
+      return detectIn(landmarker!, frame, area, lastTime);
+    });
+    const visible = frame.visibleRect!;
+    const poses = mergeAreas(found, visible.width / visible.height);
+    const ms = (performance.now() - start) / areas.length;
     reply({ id: request.id, type: 'poses', frame: request.frame, poses, ms }, [request.frame]);
   } catch (error) {
     if (request.type === 'detect') request.frame.close();

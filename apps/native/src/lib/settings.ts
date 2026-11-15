@@ -7,19 +7,19 @@ import {
   parseRunUp,
   parseSoundOn,
   parseWide,
-  parseZone,
+  parseZones,
 } from '@nomol/core/settings';
 import Storage from 'expo-sqlite/kv-store';
 
 // Synchronous like the web app's local storage, so settings are there on the first render.
 // Everything here belongs to this device and where it's mounted.
 
-export function loadZone(): Zone {
-  return parseZone(Storage.getItemSync(SETTINGS_KEYS.zone));
+export function loadZones(): Zone[] {
+  return parseZones(Storage.getItemSync(SETTINGS_KEYS.zone));
 }
 
-export function saveZone(zone: Zone) {
-  Storage.setItemSync(SETTINGS_KEYS.zone, JSON.stringify(zone));
+export function saveZones(zones: Zone[]) {
+  Storage.setItemSync(SETTINGS_KEYS.zone, JSON.stringify(zones));
 }
 
 export function loadRunUp(): RunUp | null {

@@ -1,6 +1,6 @@
 import z from 'zod';
 import type { RunUp } from './detection/session';
-import type { Zone } from './detection/zone';
+import { MAX_ZONES, type Zone } from './detection/zone';
 
 /**
  * Per-device settings as both apps store them (as strings, under the same keys), parsed here so
@@ -22,13 +22,19 @@ export const zoneSchema = z
   .object({ left: unit, top: unit, right: unit, bottom: unit })
   .refine((zone) => zone.left < zone.right && zone.top < zone.bottom);
 
-export function parseZone(raw: string | null): Zone {
-  if (!raw) return DEFAULT_ZONE;
+/** Stored as a list; before there could be several, as the one zone itself. */
+const zonesSchema = z.union([
+  z.array(zoneSchema).min(1).max(MAX_ZONES),
+  zoneSchema.transform((zone) => [zone]),
+]);
+
+export function parseZones(raw: string | null): Zone[] {
+  if (!raw) return [DEFAULT_ZONE];
   try {
-    const result = zoneSchema.safeParse(JSON.parse(raw));
-    return result.success ? result.data : DEFAULT_ZONE;
+    const result = zonesSchema.safeParse(JSON.parse(raw));
+    return result.success ? result.data : [DEFAULT_ZONE];
   } catch (_error) {
-    return DEFAULT_ZONE;
+    return [DEFAULT_ZONE];
   }
 }
 

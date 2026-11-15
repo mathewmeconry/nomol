@@ -1,12 +1,12 @@
 import {
   bufferCrop,
   cropArea,
-  posesInArea,
+  posesInAreas,
   type PixelRect,
 } from '@nomol/core/detection/camera-frame';
 import { measureSpeed } from '@nomol/core/detection/model-speed';
 import type { Pose } from '@nomol/core/detection/pose';
-import type { Zone } from '@nomol/core/detection/zone';
+import { mergeAreas, type Zone } from '@nomol/core/detection/zone';
 import { createPoseLandmarker } from '@nomol/native-modules';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrameOutput, type Frame } from 'react-native-vision-camera';
@@ -31,8 +31,8 @@ const STILL_EVERY_MS = 100;
 
 /** What the frame worklet needs from the screen, written on the JS thread. */
 type Look = {
-  /** Where to detect (`detectionArea`), in the picture. */
-  area: Zone;
+  /** Where to detect (`detectionAreas`), in the picture. */
+  areas: Zone[];
   /** The preview mirrors front cameras. */
   mirrored: boolean;
   paused: boolean;
@@ -41,9 +41,10 @@ type Look = {
 /** One detection as it leaves the worklet. */
 type Raw = {
   landmarks: number[];
+  counts: number[];
   ms: number;
   time: number;
-  crop: PixelRect;
+  crops: PixelRect[];
   width: number;
   height: number;
   rotation: number;
@@ -71,7 +72,7 @@ export type Detected = {
 export function usePoseDetection(onDetected: (detected: Detected) => void) {
   const [landmarker] = useState(createPoseLandmarker);
   const [look] = useState(() =>
-    createSynchronizable<Look>({ area: WHOLE, mirrored: false, paused: true }),
+    createSynchronizable<Look>({ areas: [WHOLE], mirrored: false, paused: true }),
   );
   // Each written by one side only, so neither overwrites the other's change: where stills go
   // (null when not saving) by the JS thread, when the last was saved by the camera thread.
@@ -95,12 +96,13 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
   const deliver = useCallback(
     (raw: Raw) => {
       const orientation = { rotation: raw.rotation, mirrored: raw.mirrored };
-      const area = cropArea(raw.crop, raw.width, raw.height, orientation);
+      const areas = raw.crops.map((crop) => cropArea(crop, raw.width, raw.height, orientation));
       const turned = raw.rotation === 90 || raw.rotation === 270;
+      const aspectRatio = turned ? raw.height / raw.width : raw.width / raw.height;
       onDetectedRef.current({
-        poses: posesInArea(raw.landmarks, area),
+        poses: mergeAreas(posesInAreas(raw.landmarks, raw.counts, areas), aspectRatio),
         time: raw.time,
-        aspectRatio: turned ? raw.height / raw.width : raw.width / raw.height,
+        aspectRatio,
         still: raw.still,
       });
       const timings = timingsRef.current;
@@ -117,10 +119,12 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
     (frame: Frame) => {
       'worklet';
       try {
-        const { area, mirrored, paused } = look.getDirty();
+        const { areas, mirrored, paused } = look.getDirty();
         if (paused) return;
         const rotation = ROTATION[frame.orientation];
-        const crop = bufferCrop(area, frame.width, frame.height, { rotation, mirrored });
+        const crops = areas.map((area) =>
+          bufferCrop(area, frame.width, frame.height, { rotation, mirrored }),
+        );
         // Nanoseconds since boot; MediaPipe and the session work in ms.
         const time = frame.timestamp / 1e6;
         const dir = stillsDir.getDirty();
@@ -129,9 +133,9 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
           still = `${dir}/${Math.round(time)}.jpg`;
           lastStill.setBlocking(time);
         }
-        const { landmarks, ms } = landmarker.detect(
+        const { landmarks, counts, ms } = landmarker.detect(
           frame,
-          crop,
+          crops,
           rotation,
           mirrored,
           time,
@@ -139,9 +143,10 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
         );
         scheduleOnRN(deliver, {
           landmarks,
+          counts,
           ms,
           time,
-          crop,
+          crops,
           width: frame.width,
           height: frame.height,
           rotation,
@@ -164,8 +169,8 @@ export function usePoseDetection(onDetected: (detected: Detected) => void) {
 
   /** Where to look next; nothing is detected while `paused` or before the model is loaded. */
   const setLook = useCallback(
-    (area: Zone, mirrored: boolean, paused: boolean) => {
-      look.setBlocking({ area, mirrored, paused: paused || !ready });
+    (areas: Zone[], mirrored: boolean, paused: boolean) => {
+      look.setBlocking({ areas, mirrored, paused: paused || !ready });
     },
     [look, ready],
   );

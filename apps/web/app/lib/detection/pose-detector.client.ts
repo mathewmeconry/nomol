@@ -9,14 +9,14 @@ const modelUrl = (size: 'heavy' | 'lite') =>
 
 export type PoseDetector = {
   /**
-   * Poses in a camera frame, looking only at `area` (see `detectionArea`). The frame is handed
+   * Poses in a camera frame, looking only at `areas` (see `detectionAreas`). The frame is handed
    * to the worker (a VideoFrame moves without copying the picture) and comes back with the
    * poses, e.g. to record it; the caller closes it.
    */
   detect: (
     frame: VideoFrame,
     timeMs: number,
-    area: Zone,
+    areas: Zone[],
   ) => Promise<{ frame: VideoFrame; poses: Pose[] }>;
   /** The heavy model, for the replay skeleton: heavy even when live detection fell back to lite. */
   heavyModel: Uint8Array;
@@ -68,8 +68,8 @@ export async function createPoseDetector(
   }
 
   return {
-    async detect(frame, timeMs, area) {
-      const response = await ask({ id: nextId++, type: 'detect', frame, time: timeMs, area }, [
+    async detect(frame, timeMs, areas) {
+      const response = await ask({ id: nextId++, type: 'detect', frame, time: timeMs, areas }, [
         frame,
       ]);
       if (response.type !== 'poses') throw new Error(`unexpected ${response.type}`);

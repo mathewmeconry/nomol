@@ -14,11 +14,13 @@ export interface Crop {
 
 export interface Detection {
   /**
-   * x, y and visibility of each landmark, 33 per pose, all poses in one list; x and y are
-   * normalized to the crop turned upright (`posesInArea` in core).
+   * x, y and visibility of each landmark, 33 per pose, all poses of all crops in one list; x
+   * and y are normalized to the pose's crop turned upright (`posesInArea` in core).
    */
   landmarks: number[];
-  /** How long detection took, to switch to the lite model on slow phones. */
+  /** How many of the poses each crop found, in the order of the crops. */
+  counts: number[];
+  /** How long detection took per crop, to switch to the lite model on slow phones. */
   ms: number;
 }
 
@@ -27,7 +29,7 @@ export interface PoseLandmarker extends HybridObject<{ android: 'kotlin' }> {
   /** Loads a model; detection keeps using the previous one until it's ready. */
   load(model: Model): Promise<void>;
   /**
-   * Poses in `crop` of the frame, turned clockwise by `rotation` degrees and flipped if
+   * Poses in each of `crops` of the frame, turned clockwise by `rotation` degrees and flipped if
    * `mirrored` (so it looks as on screen). `timeMs` must grow from frame to frame. No poses
    * until a model is loaded.
    *
@@ -38,7 +40,7 @@ export interface PoseLandmarker extends HybridObject<{ android: 'kotlin' }> {
    */
   detect(
     frame: Frame,
-    crop: Crop,
+    crops: Crop[],
     rotation: number,
     mirrored: boolean,
     timeMs: number,

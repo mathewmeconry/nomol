@@ -1,7 +1,7 @@
 import { useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '~/components/ui/button';
-import { normalizeZone, type Zone } from '@nomol/core/detection/zone';
+import { MAX_ZONES, normalizeZone, secondZone, type Zone } from '@nomol/core/detection/zone';
 import type { Point } from '@nomol/core/detection/pose';
 import { cn } from 'cn';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
@@ -10,8 +10,8 @@ import { DEFAULT_ZONE } from '@nomol/core/settings';
 const MIN_SIZE = 0.05;
 
 type Props = {
-  zone: Zone;
-  onSave: (zone: Zone) => void;
+  zones: Zone[];
+  onSave: (zones: Zone[]) => void;
   onCancel: () => void;
   /** The strip beside the picture, when the controls are docked there. */
   dock?: HTMLElement | null;
@@ -25,11 +25,25 @@ function toPoint(event: PointerEvent<HTMLDivElement>): Point {
   };
 }
 
-/** Coach draws the start zone on the live image. Its bottom edge marks the floor. */
-export default function ZoneEditor({ zone, onSave, onCancel, dock }: Props) {
-  const [draft, setDraft] = useState<Zone>(zone);
+function isTooSmall(zone: Zone) {
+  return zone.right - zone.left < MIN_SIZE || zone.bottom - zone.top < MIN_SIZE;
+}
+
+/**
+ * Coach draws the start zones on the live image; their bottom edges mark the floor. Dragging
+ * draws the selected one; a second one is for gymnasts starting at the other end of the floor
+ * track.
+ */
+export default function ZoneEditor({ zones, onSave, onCancel, dock }: Props) {
+  const [drafts, setDrafts] = useState<Zone[]>(zones);
+  const [selected, setSelected] = useState(0);
   const [anchor, setAnchor] = useState<Point | null>(null);
-  const tooSmall = draft.right - draft.left < MIN_SIZE || draft.bottom - draft.top < MIN_SIZE;
+  const tooSmall = drafts.some(isTooSmall);
+  const several = drafts.length > 1;
+
+  function draw(zone: Zone) {
+    setDrafts(drafts.map((draft, i) => (i === selected ? zone : draft)));
+  }
 
   /*
     In the strip beside the picture when docked. Otherwise anchored to the screen, not the
@@ -43,22 +57,64 @@ export default function ZoneEditor({ zone, onSave, onCancel, dock }: Props) {
         dock
           ? 'w-full'
           : 'fixed inset-x-3 z-30 rounded-xl bg-slate-900/85 px-3 py-2 backdrop-blur transition-opacity',
-        !dock && (draft.bottom > 0.5 ? 'top-3' : 'bottom-3'),
+        !dock && (drafts[selected].bottom > 0.5 ? 'top-3' : 'bottom-3'),
         !dock && anchor && 'pointer-events-none opacity-0',
       )}
     >
       <p className="min-w-40 flex-1 text-sm text-slate-300">
         {tooSmall
           ? 'Zu klein. Zieh einen grösseren Bereich auf.'
-          : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
+          : several
+            ? `Zieh Startzone ${selected + 1} auf. Die untere Kante ist der Boden.`
+            : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
       </p>
-      <Button variant="outline" onClick={() => setDraft(DEFAULT_ZONE)}>
+      {several &&
+        drafts.map((_draft, i) => (
+          <Button
+            key={i}
+            variant={i === selected ? 'default' : 'outline'}
+            aria-pressed={i === selected}
+            onClick={() => setSelected(i)}
+          >
+            Zone {i + 1}
+          </Button>
+        ))}
+      {several ? (
+        <Button
+          variant="outline"
+          onClick={() => {
+            setDrafts(drafts.filter((_draft, i) => i !== selected));
+            setSelected(0);
+          }}
+        >
+          Zone {selected + 1} entfernen
+        </Button>
+      ) : (
+        drafts.length < MAX_ZONES && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDrafts([...drafts, secondZone(drafts[0])]);
+              setSelected(drafts.length);
+            }}
+          >
+            Zweite Zone
+          </Button>
+        )
+      )}
+      <Button
+        variant="outline"
+        onClick={() => {
+          setDrafts([DEFAULT_ZONE]);
+          setSelected(0);
+        }}
+      >
         Standard
       </Button>
       <Button variant="outline" onClick={onCancel}>
         Abbrechen
       </Button>
-      <Button disabled={tooSmall} onClick={() => onSave(draft)}>
+      <Button disabled={tooSmall} onClick={() => onSave(drafts)}>
         Speichern
       </Button>
     </div>
@@ -74,26 +130,44 @@ export default function ZoneEditor({ zone, onSave, onCancel, dock }: Props) {
           event.currentTarget.setPointerCapture(event.pointerId);
           const point = toPoint(event);
           setAnchor(point);
-          setDraft(normalizeZone(point, point));
+          draw(normalizeZone(point, point));
         }}
         onPointerMove={(event) => {
-          if (anchor) setDraft(normalizeZone(anchor, toPoint(event)));
+          if (anchor) draw(normalizeZone(anchor, toPoint(event)));
         }}
         onPointerUp={() => setAnchor(null)}
       >
-        <div
-          className="absolute border-2 border-b-4 border-sky-300 bg-sky-400/15"
-          style={{
-            left: `${draft.left * 100}%`,
-            top: `${draft.top * 100}%`,
-            width: `${(draft.right - draft.left) * 100}%`,
-            height: `${(draft.bottom - draft.top) * 100}%`,
-          }}
-        >
-          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full rounded bg-sky-300 px-1.5 text-xs font-semibold text-slate-950">
-            Boden
-          </span>
-        </div>
+        {drafts.map((draft, i) => (
+          <div
+            key={i}
+            className={cn(
+              'absolute border-2 border-b-4',
+              i === selected
+                ? 'border-sky-300 bg-sky-400/15'
+                : 'border-slate-300/60 bg-slate-300/10',
+            )}
+            style={{
+              left: `${draft.left * 100}%`,
+              top: `${draft.top * 100}%`,
+              width: `${(draft.right - draft.left) * 100}%`,
+              height: `${(draft.bottom - draft.top) * 100}%`,
+            }}
+          >
+            {several && (
+              <span className="absolute top-1 left-1 text-sm font-semibold text-slate-100">
+                {i + 1}
+              </span>
+            )}
+            <span
+              className={cn(
+                'absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full rounded px-1.5 text-xs font-semibold text-slate-950',
+                i === selected ? 'bg-sky-300' : 'bg-slate-300/80',
+              )}
+            >
+              Boden
+            </span>
+          </div>
+        ))}
       </div>
 
       {dock ? createPortal(bar, dock) : bar}
