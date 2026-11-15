@@ -6,6 +6,7 @@ import {
   LOST_MS,
   RUN_UP_IDLE_MS,
   SIGN_HOLD_MS,
+  gymnastArea,
   initialSession,
   step,
   traceBack,
@@ -499,6 +500,18 @@ describe('stopping', () => {
     expect(events[0].time).toBeGreaterThan(950 + LOST_IN_ELEMENT_MS);
   });
 
+  it('keeps the gymnast after a second, partial skeleton showed up below them for a frame', () => {
+    // From a floor recording: MediaPipe added a skeleton just below a girl standing still for
+    // one frame; taken for someone else, it then claimed her own skeleton for good.
+    const scene: Scene = (t) => [
+      makePose({ x: 0.45, feetY: 0.9 }),
+      ...(t > 100 && t < 140 ? [makePose({ x: 0.45, feetY: 0.99 })] : []),
+    ];
+    const { events, state } = run(scene, 3000, { from: recording(0.45) });
+    expect(events).toEqual([]);
+    expect(state.kind === 'recording' && state.missed).toBe(0);
+  });
+
   it('does not take someone who shows up where the gymnast left the picture', () => {
     // From a hall recording: a girl close to the camera walked out at the side, and the one
     // hidden behind her appeared next to that spot, much smaller.
@@ -509,6 +522,42 @@ describe('stopping', () => {
         : [behind(makePose({ x: 0.9, feetY: 0.9 }))];
     const { events } = run(scene, 3000, { from: recording(0.55) });
     expect(events.map((e) => e.event)).toEqual([{ type: 'stop', reason: 'lost' }]);
+  });
+});
+
+describe('gymnastArea', () => {
+  const standing = () => [makePose({ x: 0.45, feetY: 0.9 })];
+  const recording = () => run(standing, 0, { armed: true }).state;
+  const height = (state: SessionState) => {
+    const area = gymnastArea(state, 1);
+    return area && area.bottom - area.top;
+  };
+
+  it('is nothing while waiting', () => {
+    expect(gymnastArea(initialSession, 1)).toBeNull();
+  });
+
+  it('is centred on the gymnast', () => {
+    const state = run(standing, 1000, { from: recording(), aspectRatio: 16 / 9 }).state;
+    const area = gymnastArea(state, 16 / 9)!;
+    expect((area.left + area.right) / 2).toBeCloseTo(0.45);
+  });
+
+  it('keeps its size when a skeleton far too large is taken for the gymnast once', () => {
+    const before = run(standing, 1000, { from: recording() }).state;
+    const large = run(() => [shrink(makePose({ x: 0.45, feetY: 0.9 }), 2)], 0, {
+      from: before,
+      start: 1100,
+    }).state;
+    expect(large.kind === 'recording' && large.missed).toBe(0);
+    expect(height(large)).toBeCloseTo(height(before)!);
+  });
+
+  it('changes size while the gymnast is missing', () => {
+    const missing = (frames: number) =>
+      run(() => [], ((frames - 1) * 1000) / FPS, { from: recording() }).state;
+    const sizes = [1, 2, 3].map((frames) => height(missing(frames)));
+    expect(new Set(sizes).size).toBe(3);
   });
 });
 

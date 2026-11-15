@@ -1,4 +1,4 @@
-import { LM, bodySize, boundingBox, higherAnkleY, hipCenter, type Point, type Pose } from './pose';
+import { LM, bodySize, higherAnkleY, hipCenter, type Point, type Pose } from './pose';
 
 /**
  * Start zone drawn by the coach on the live image, in normalized image coordinates.
@@ -54,7 +54,7 @@ const RUN_UP_MARGIN = 0.25;
  * cropped to his zone in 88. A narrower area only adds letterboxing, hence the square.
  *
  * Waiting, the start zone (with a margin for an automatic start, `runUp`); recording, only
- * around the gymnast (`gymnast`, see `coverPose`). On the floor at the back of the hall with
+ * around the gymnast (`gymnast`, see `gymnastArea`). On the floor at the back of the hall with
  * the wide lens (gymnasts ~0.15 image heights tall, 9 clips, 5 frames per second), MediaPipe
  * found people in the zone 459 times given the zone, 94 times with the margin; while
  * recording, the zone plus everywhere the gymnast had been grew to the whole picture height
@@ -87,23 +87,6 @@ export function detectionArea(
     top,
     right: (left + width) / aspectRatio,
     bottom: top + height,
-  };
-}
-
-/**
- * `pose` and its own size around it on every side, where detection looks for the gymnast in the
- * next frame: going into a salto the torso moved 0.32 between two frames. In all 161 clips of a
- * day in the hall (Sprung, floor, rings), the next sighting's torso was outside this in 28 of
- * 11 232 steps.
- */
-export function coverPose(pose: Pose): Zone {
-  const box = boundingBox(pose);
-  const room = Math.max(box.right - box.left, box.bottom - box.top);
-  return {
-    left: box.left - room,
-    top: box.top - room,
-    right: box.right + room,
-    bottom: box.bottom + room,
   };
 }
 

@@ -229,8 +229,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   up), the lite model takes over. MediaPipe drives
   everything live (sign, tracking, stop, trimming). It only gets part of each frame
   (`detectionArea`): the start zone (for an automatic start plus a quarter of its size on each
-  side, where the runner comes from), widened to a square; while recording only the gymnast's
-  last sighting with their own size around it (`coverPose`). MediaPipe shrinks its
+  side, where the runner comes from), widened to a square; while recording only around the
+  gymnast's last sighting, 4 of their torso lengths on each side (`gymnastArea`; the median of
+  the last sightings, changing size while they are missing). MediaPipe shrinks its
   input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
   pixels tall. The crop is a `visibleRect` view of the `VideoFrame` (no copy; gives the same
   poses as a canvas crop), mapped back to whole-frame coordinates in the worker.
@@ -420,6 +421,18 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   mat's front, where nobody stands: recordings ran on until the gymnast was lost, the next one
   often already running in, and a coach who set off the automatic start and stood in front of
   the camera filled a 30 s clip.
+- Reck and floor, Android, November 15 2026 (42 recordings, replayed in a closed loop: MediaPipe
+  heavy in VIDEO mode on the area core asks for, core's `step` on the result, 10 detections per
+  second). On the Reck the gymnast on the bar (far away, partly behind the post) was found in
+  most frames of a crop around the bar and almost never in the whole picture or half of it, so
+  a larger area is no help. Recordings ended early because the area went wrong: a skeleton
+  twice the gymnast's size drawn across the post blew it up to the whole picture; a girl
+  standing still in plain view went unfound in the same area for seconds and was found in one a
+  few pixels larger (MediaPipe's detector is that fragile); and a partial second skeleton below
+  a small gymnast, taken for someone else, claimed her skeleton in every frame after. Fixed
+  (`gymnastArea`, `claimedByOthers`): 4350 instead of 3057 frames with the gymnast, 7 instead
+  of 18 early stops. On 39 Sprung clips it followed the gymnast through landing and walk-off and
+  stopped no later than the app had.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

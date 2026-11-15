@@ -18,8 +18,14 @@ import useWakeLock from '~/hooks/use-wake-lock';
 import useWideAngle from '~/hooks/use-wide-angle';
 import { loadCameraId, saveCameraId } from '~/lib/camera-choice';
 import type { Pose } from '@nomol/core/detection/pose';
-import { initialSession, step, type RunUp, type SessionState } from '@nomol/core/detection/session';
-import { coverPose, detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
+import {
+  gymnastArea,
+  initialSession,
+  step,
+  type RunUp,
+  type SessionState,
+} from '@nomol/core/detection/session';
+import { detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
 import { drawPersonBox, drawStartSign, drawZone, prepareCanvas } from '~/lib/draw';
 import {
   addPreroll,
@@ -75,8 +81,6 @@ export default function Tablet() {
   const seenRef = useRef<Seen[]>([]);
   /** Where detection looks (`detectionArea`); the whole picture until the first frame. */
   const areaRef = useRef<Zone>({ left: 0, top: 0, right: 1, bottom: 1 });
-  /** Around the gymnast being recorded, where detection looks for them next. */
-  const coveredRef = useRef<Zone | null>(null);
   /** Capture time of the last detected frame: where a recording stopped by hand ends. */
   const lastFrameTimeRef = useRef(0);
   const clipStripScrollRef = useRef(0);
@@ -208,12 +212,12 @@ export default function Tablet() {
         recordStill(active, frame, time);
       }
       if (result.event?.type === 'stop') void finishRecording(time);
-      coveredRef.current = !activeRef.current
-        ? null
-        : result.target
-          ? coverPose(result.target)
-          : coveredRef.current;
-      areaRef.current = detectionArea(zone, aspectRatio, coveredRef.current, runUp !== null);
+      areaRef.current = detectionArea(
+        zone,
+        aspectRatio,
+        gymnastArea(result.state, aspectRatio),
+        runUp !== null,
+      );
 
       setStatus(
         activeRef.current

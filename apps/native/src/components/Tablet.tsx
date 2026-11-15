@@ -1,12 +1,13 @@
 import type { Pose } from '@nomol/core/detection/pose';
 import {
+  gymnastArea,
   initialSession,
   step,
   type RunUp,
   type SessionEvent,
   type SessionState,
 } from '@nomol/core/detection/session';
-import { coverPose, detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
+import { detectionArea, isInZone, type Zone } from '@nomol/core/detection/zone';
 import type { Seen } from '@nomol/core/recording/preroll';
 import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -118,8 +119,6 @@ export default function Tablet() {
   const prerollStillsRef = useRef<string | null>(null);
   /** Where the frame worklet currently saves stills (`saveStills`). */
   const stillsDirRef = useRef<string | null>(null);
-  /** Around the gymnast being recorded, where detection looks for them next. */
-  const coveredRef = useRef<Zone | null>(null);
   const clipStripScrollRef = useRef(0);
 
   const found =
@@ -210,7 +209,12 @@ export default function Tablet() {
   // Paused while the coach draws the zone, so nobody starts a recording in the meantime.
   useEffect(() => {
     setLook(
-      detectionArea(zone, aspectRatio, coveredRef.current, runUp !== null),
+      detectionArea(
+        zone,
+        aspectRatio,
+        gymnastArea(sessionRef.current, aspectRatio),
+        runUp !== null,
+      ),
       mirrored,
       editingZone,
     );
@@ -264,7 +268,6 @@ export default function Tablet() {
   }
 
   function recordingStopped() {
-    coveredRef.current = null;
     const active = activeRef.current;
     if (!active) return;
     activeRef.current = null;
@@ -306,8 +309,11 @@ export default function Tablet() {
     if (result.event?.type === 'stop') recordingStopped();
 
     const recording = result.state.kind === 'recording';
-    if (recording && result.target) coveredRef.current = coverPose(result.target);
-    setLook(detectionArea(zone, frameAspect, coveredRef.current, runUp !== null), mirrored, false);
+    setLook(
+      detectionArea(zone, frameAspect, gymnastArea(result.state, frameAspect), runUp !== null),
+      mirrored,
+      false,
+    );
 
     setStatus(
       recording

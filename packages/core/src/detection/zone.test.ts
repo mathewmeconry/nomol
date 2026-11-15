@@ -1,5 +1,4 @@
-import { makePose } from '../tests/poses';
-import { coverPose, detectionArea } from './zone';
+import { detectionArea } from './zone';
 
 describe('detectionArea', () => {
   it('crops a 16:9 picture to about a square around the start zone', () => {
@@ -49,14 +48,5 @@ describe('detectionArea', () => {
     expect(area.top).toBeCloseTo(0.4);
     expect(area.bottom).toBeCloseTo(0.6);
     expect((area.left + area.right) / 2).toBeCloseTo(0.75);
-  });
-});
-
-describe('coverPose', () => {
-  it('is the pose with its own size around it', () => {
-    // Standing 0.33 tall at x 0.5, feet at 0.9.
-    const area = coverPose(makePose({ x: 0.5, feetY: 0.9 }));
-    expect(area.top).toBeCloseTo(0.57 - 0.33);
-    expect(area.bottom).toBeCloseTo(0.9 + 0.33);
   });
 });

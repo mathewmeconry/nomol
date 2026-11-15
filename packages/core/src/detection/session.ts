@@ -50,6 +50,15 @@ export const LOST_MS = 1500;
  * for up to 1.2 s and is often not found while blurred at the bottom of the swing.
  */
 export const LOST_IN_ELEMENT_MS = 3000;
+/**
+ * `gymnastArea`: torso lengths around the gymnast's torso centre on each side (about their own
+ * height standing, as before with their bounding box), from the median torso length of this
+ * many sightings, and the factors it cycles through while they are missing. 4 found them in a
+ * few more frames than 5 or the bounding box; 6 in far fewer.
+ */
+const SEARCH_TORSOS = 4;
+const SEARCH_SIZES = 10;
+const SEARCH_JITTER = [1, 0.7, 1.3];
 /** Largest torso jump between frames (image heights) that still counts as the same person. */
 const MAX_JUMP = 0.15;
 /**
@@ -142,6 +151,10 @@ type Recording = SignState & {
    * the rest of a 30 s clip.
    */
   lastElementAt: number | null;
+  /** Torso lengths of the last sightings (`SEARCH_SIZES`), for `gymnastArea`. */
+  sizes: number[];
+  /** Frames in a row the gymnast wasn't found in. */
+  missed: number;
 };
 
 export type SessionState = Idle | Recording;
@@ -224,6 +237,8 @@ function startRecording(
     lastSeen: time,
     others: othersThan(pose, poses),
     lastElementAt,
+    sizes: [torsoLength(pose)],
+    missed: 0,
     ...sign,
   };
 }
@@ -368,7 +383,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
     ? MAX_JUMP
     : MAX_GYMNAST_JUMP + (SEARCH_GROWTH_PER_S * (frame.time - state.lastSeen)) / 1000;
   const maxSizeChange = atSide ? MAX_SIZE_CHANGE_AT_SIDE : MAX_SIZE_CHANGE;
-  const claimed = claimedByOthers(state.others, frame.poses);
+  const claimed = claimedByOthers(state.others, frame.poses, state.target);
   const taken = new Set(claimed.values());
   const candidates = frame.poses.filter((pose) => {
     const size = torsoLength(pose);
@@ -387,7 +402,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
       const pose = claimed.get(other);
       return pose ? torsoCenter(pose) : other;
     });
-    return { state: { ...state, others }, event: null, target: null };
+    return { state: { ...state, others, missed: state.missed + 1 }, event: null, target: null };
   }
 
   const pose = nearest(candidates, state.target);
@@ -416,9 +431,38 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
       lastSeen: frame.time,
       others,
       lastElementAt,
+      sizes: [...state.sizes, torsoLength(pose)].slice(-SEARCH_SIZES),
+      missed: 0,
     },
     event: null,
     target: pose,
+  };
+}
+
+/**
+ * Where detection looks for the recorded gymnast next (normalized, see `detectionArea`): their
+ * torso centre with `SEARCH_TORSOS` of their torso lengths on each side, null while waiting.
+ *
+ * The size is the median of the last sightings: on the Reck MediaPipe sometimes drew a skeleton
+ * twice the gymnast's size across the post, the area then took the whole picture and the
+ * gymnast, small in it, wasn't found again. While the gymnast is missing the area keeps
+ * changing size (`SEARCH_JITTER`): MediaPipe's detector is fragile, and a girl standing still,
+ * clearly visible, went unfound for seconds in the very same area, found again in one a few
+ * pixels larger. Replayed through MediaPipe at 10 detections per second on 42 Reck and floor
+ * recordings (November 2026), this and the claim rule (`claimedByOthers`) found the gymnast in
+ * 4350 instead of 3057 frames and lost them early in 7 instead of 18 recordings.
+ */
+export function gymnastArea(state: SessionState, aspectRatio: number): Zone | null {
+  if (state.kind === 'idle') return null;
+  const sizes = [...state.sizes].sort((a, b) => a - b);
+  const jitter = state.missed > 0 ? SEARCH_JITTER[state.missed % SEARCH_JITTER.length] : 1;
+  const reach = SEARCH_TORSOS * sizes[Math.floor(sizes.length / 2)] * jitter;
+  const { x, y } = state.target;
+  return {
+    left: (x - reach) / aspectRatio,
+    top: y - reach,
+    right: (x + reach) / aspectRatio,
+    bottom: y + reach,
   };
 }
 
@@ -441,14 +485,23 @@ function othersThan(pose: Pose, poses: Pose[]): Point[] {
  * Each of the others takes their nearest skeleton in the new frame, so they can't be taken for
  * the gymnast. Comparing distances alone wasn't enough: going into a salto the gymnast's torso
  * landed about as far from a coach as from where she had been. Someone new may be the gymnast.
+ * A skeleton nearer to where the gymnast was isn't claimed: MediaPipe sometimes adds a partial
+ * second skeleton below a small gymnast for a frame, which then counted as someone else and took
+ * the gymnast's own skeleton in every frame after: on the floor, girls standing still in plain
+ * view were lost right after the start.
  */
-function claimedByOthers(others: Point[], poses: Pose[]): Map<Point, Pose> {
+function claimedByOthers(others: Point[], poses: Pose[], gymnast: Point): Map<Point, Pose> {
   const claimed = new Map<Point, Pose>();
   for (const other of others) {
     const taken = new Set(claimed.values());
-    const free = poses.filter(
-      (pose) => !taken.has(pose) && distance(torsoCenter(pose), other) <= MAX_JUMP,
-    );
+    const free = poses.filter((pose) => {
+      const center = torsoCenter(pose);
+      return (
+        !taken.has(pose) &&
+        distance(center, other) <= MAX_JUMP &&
+        distance(center, other) < distance(center, gymnast)
+      );
+    });
     if (free.length > 0) claimed.set(other, nearest(free, other));
   }
   return claimed;
