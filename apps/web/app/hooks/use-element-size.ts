@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 
 /**
- * The size of the element the returned callback is given as its `ref`; the window's until
- * that's measured.
+ * The size of the element the returned callback is given as its `ref`, padding and border
+ * included; the window's until that's measured.
  */
 export default function useElementSize() {
   const [size, setSize] = useState(() =>
@@ -12,8 +12,8 @@ export default function useElementSize() {
   );
   const observe = useCallback((element: HTMLElement | null) => {
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = element.getBoundingClientRect();
       setSize({ width, height });
     });
     observer.observe(element);

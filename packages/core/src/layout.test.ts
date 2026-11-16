@@ -30,6 +30,21 @@ describe('screenLayout', () => {
     });
   });
 
+  it('gives the strip below only the height its controls need, centred with the picture', () => {
+    expect(screenLayout(412, 915, 4 / 3, 210.4)).toEqual({
+      dock: 'bottom',
+      picture: { left: 0, top: 198, width: 412, height: 309 },
+      strip: { left: 0, top: 507, width: 412, height: 211 },
+    });
+    // More than there's room for: the strip takes what's left and scrolls.
+    expect(screenLayout(412, 915, 4 / 3, 2000).strip).toEqual({
+      left: 0,
+      top: 309,
+      width: 412,
+      height: 606,
+    });
+  });
+
   it('docks below an upright camera picture on a phone held upright', () => {
     const { dock, picture, strip } = screenLayout(390, 844, UPRIGHT);
     expect(dock).toBe('bottom');

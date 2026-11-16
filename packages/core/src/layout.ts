@@ -21,9 +21,16 @@ const MIN_SCALE = 0.9;
 
 /**
  * Where the picture (shown whole) and the controls go on a `width` × `height` screen. The picture
- * is pinned to the left or top edge, so all free space ends up in one strip for the controls.
+ * is pinned to the left edge, so all free space ends up in one strip for the controls. Below the
+ * picture the strip only gets the `stripContent` height the controls need (once measured), and
+ * picture and strip are centred together rather than leaving a large empty strip.
  */
-export function screenLayout(width: number, height: number, aspectRatio: number): Layout {
+export function screenLayout(
+  width: number,
+  height: number,
+  aspectRatio: number,
+  stripContent = Infinity,
+): Layout {
   // The picture as large as it fits, as when the controls float over it.
   const fullHeight = Math.min(height, width / aspectRatio);
   const sideHeight = Math.min(height, (width - MIN_SIDE) / aspectRatio);
@@ -59,14 +66,16 @@ export function screenLayout(width: number, height: number, aspectRatio: number)
       strip: { left: pictureWidth, top: 0, width: width - pictureWidth, height },
     };
   }
+  const stripHeight = Math.min(height - pictureHeight, Math.ceil(stripContent));
+  const top = Math.round((height - pictureHeight - stripHeight) / 2);
   return {
     dock: 'bottom',
     picture: {
       left: Math.round((width - pictureWidth) / 2),
-      top: 0,
+      top,
       width: pictureWidth,
       height: pictureHeight,
     },
-    strip: { left: 0, top: pictureHeight, width, height: height - pictureHeight },
+    strip: { left: 0, top: top + pictureHeight, width, height: stripHeight },
   };
 }

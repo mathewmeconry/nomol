@@ -86,7 +86,10 @@ Requirements, as agreed with the owner:
   shape: a side strip needs 176 px, a bottom strip 200 px, and the picture may shrink by up to
   10 % for it (phones in landscape need ~3 %, an upright camera in portrait ~7 %). Otherwise (a
   16:9 desktop window, a 4:3 tablet with a 4:3 picture) the controls float over the picture as
-  before and fade during playback. In a short strip the status and record row stay put and the
+  before and fade during playback. A strip below the picture is only as high as its controls
+  (measured), and picture and strip are centred together on the screen; in landscape the
+  picture is limited by the height, so the controls beside it take no room from it and a strip
+  below would shrink it by a third. In a short strip the status and record row stay put and the
   rest scrolls. Every tap enters fullscreen (not on iPhone); installed to the home screen it starts fullscreen.
 - **Offline:** after one visit with internet the app and model work without a connection.
 - **No server for now.** Everything runs and stays on the device. A server is a later discussion.

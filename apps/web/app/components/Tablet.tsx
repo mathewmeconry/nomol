@@ -110,13 +110,15 @@ export default function Tablet() {
   const livePictureRef = useRef<HTMLDivElement>(null);
   const livePicture = useDragSpot();
   const [screen, observeScreen] = useElementSize();
+  /** Below the picture the strip is as high as its controls; this measures them. */
+  const [strip, observeStrip] = useElementSize();
   /** In the strip, where the zone editor's bar goes. */
   const [stripSlot, setStripSlot] = useState<HTMLDivElement | null>(null);
 
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
   const recording = status === 'recording';
-  const layout = screenLayout(screen.width, screen.height, aspectRatio);
+  const layout = screenLayout(screen.width, screen.height, aspectRatio, strip.height);
   // The replay fills the screen with its controls over it, so nothing is docked meanwhile.
   const dock = showReplay ? null : layout.dock;
 
@@ -487,15 +489,26 @@ export default function Tablet() {
 
       {/*
         Docked: the strip beside or below the picture. Its width decides whether rows join into
-        lines (`@container`).
+        lines (`@container`). Below the picture it takes its controls' height, measured for
+        `screenLayout`, up to what's left beside the picture; beyond that its middle scrolls.
       */}
       {dock && layout.strip ? (
         <div
+          ref={observeStrip}
           className={cn(
             '@container absolute flex flex-col gap-2 bg-zinc-950',
             dock === 'side' ? 'border-l border-white/10 p-2' : 'border-t border-white/10 p-3',
           )}
-          style={layout.strip}
+          style={
+            dock === 'side'
+              ? layout.strip
+              : {
+                  left: layout.strip.left,
+                  top: layout.strip.top,
+                  width: layout.strip.width,
+                  maxHeight: screen.height - layout.picture.height,
+                }
+          }
         >
           {bar}
         </div>
