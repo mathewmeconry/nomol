@@ -20,6 +20,11 @@ import type { Clip } from './clip';
  */
 export type FloorHint = { feet: number; size: number };
 
+/**
+ * Not upright this long is an element. Strides measured up to ~130 ms; requiring visible knees
+ * instead dropped most Sprung flights, which are blurred.
+ */
+const ELEMENT_MS = 300;
 /** Standing still this long counts as standing after the element, not passing through. */
 const STILL_MS = 1000;
 /** Standing still: the torso centre stays within this many torso lengths. */
@@ -50,13 +55,31 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
+/**
+ * Where the first element ends: not upright for `ELEMENT_MS` in a row. A single frame is too
+ * little: a stride while walking away, or a misdetection, made a waiting gymnast's standing
+ * look like a landing.
+ */
+function elementEnd(poses: { time: number; pose: Pose }[]): number {
+  let from = -1;
+  for (let i = 0; i < poses.length; i++) {
+    if (isUpright(poses[i].pose)) {
+      from = -1;
+      continue;
+    }
+    if (from < 0) from = i;
+    if (poses[i].time - poses[from].time >= ELEMENT_MS) return i;
+  }
+  return -1;
+}
+
 /** See `FloorHint`; null when the gymnast stood on the floor line or never stood still. */
 export function floorHint(clip: Pick<Clip, 'frames' | 'zone' | 'aspectRatio'>): FloorHint | null {
   const poses = clip.frames.map((frame) => ({
     time: frame.time,
     pose: scalePose(frame.pose, clip.aspectRatio),
   }));
-  const firstElement = poses.findIndex(({ pose }) => !isUpright(pose));
+  const firstElement = elementEnd(poses);
   if (firstElement < 0) return null;
 
   // The last stretch of standing still after an element.

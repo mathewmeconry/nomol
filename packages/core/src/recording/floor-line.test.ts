@@ -18,7 +18,8 @@ function frames(from: number, poses: Pose[]): ClipFrame[] {
   return poses.map((pose, i) => ({ time: from + i * 100, pose }));
 }
 
-function jumpThenStand(standY: number, standFrames = 15): ClipFrame[] {
+/** Standing, an element of `elementFrames` frames from 0.5 s on, then standing at `standY`. */
+function jumpThenStand(standY: number, standFrames = 15, elementFrames = 4): ClipFrame[] {
   return [
     ...frames(
       0,
@@ -26,10 +27,10 @@ function jumpThenStand(standY: number, standFrames = 15): ClipFrame[] {
     ),
     ...frames(
       500,
-      Array.from({ length: 3 }, () => tucked(0.8)),
+      Array.from({ length: elementFrames }, () => tucked(0.8)),
     ),
     ...frames(
-      800,
+      500 + elementFrames * 100,
       Array.from({ length: standFrames }, () => makePose({ x: 0.5, feetY: standY })),
     ),
   ];
@@ -57,14 +58,18 @@ describe('floorHint', () => {
     expect(floorHint({ frames: standing, zone, aspectRatio: 1 })).toBeNull();
   });
 
+  it("doesn't take a stride or a misdetected frame for an element", () => {
+    expect(floorHint({ frames: jumpThenStand(0.7, 15, 1), zone, aspectRatio: 1 })).toBeNull();
+  });
+
   it('needs a second of standing still', () => {
     expect(floorHint({ frames: jumpThenStand(0.7, 8), zone, aspectRatio: 1 })).toBeNull();
   });
 
   it('ignores someone much smaller than the gymnast, further back in the hall', () => {
     const clip = jumpThenStand(0.7);
-    const far = clip.map((frame, i) =>
-      i < 8
+    const far = clip.map((frame) =>
+      frame.time < 900
         ? frame
         : { ...frame, pose: frame.pose.map((p) => ({ ...p, y: 0.7 - (0.7 - p.y) / 2 })) },
     );

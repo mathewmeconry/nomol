@@ -45,7 +45,8 @@ Requirements, as agreed with the owner:
   people stand after the element: at Sprung on the landing mat or behind it, not the mat's front
   edge (drawn there, nobody ever counted as standing and the next gymnast landed in the same
   clip). New users don't know this, so the app corrects a line drawn too low by itself
-  (`learnFloor`): when the gymnast stood still for 1 s after their last element clearly above
+  (`learnFloor`): when the gymnast stood still for 1 s after an element (not upright for
+  300 ms) clearly above
   it, in two clips of the same zone that agree, the bottom edge moves up to their feet (never
   down: feet below it count as standing anyway), with a note "Bodenlinie an die Landung
   angepasst" and "Rückgängig". Drawing the zones anew or undoing forgets the hints (kept in
@@ -459,12 +460,16 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   replayed in order per zone (the live tracked poses, no new detection): the Sprung line drawn
   at the mat's front edge (0.794) moved to ~0.59 after the third clip with someone standing,
   and 26 of 147 clips would have stopped earlier (~100 s less); one that ran through three
-  gymnasts ended after the first. The corrected Sprung line of the next day, and the Reck
-  zones, stayed. The floor track's line moved up (gymnasts standing at the far end, higher in
-  the picture), which is harmless there. Without the agreement of two clips, two people
-  standing far back would have moved a correct line; without the size check (1.5× the
-  gymnast's size at the start) 8 hints came from people further back, e.g. at a second Sprung
-  apparatus behind the first.
+  gymnasts ended after the first. The corrected Sprung line of the next day, and the other
+  zones, stayed, except a Reck zone drawn at the mats' front edge (0.709), which moved to
+  where gymnasts stand after the dismount, under the bar (~0.58). Without the agreement of two
+  clips, two people standing far back would have moved a correct line; without the size check
+  (1.5× the gymnast's size at the start) 8 hints came from people further back, e.g. at a
+  second Sprung apparatus behind the first. The element before the standing must last 300 ms:
+  with a single frame, a stride while walking off made a gymnast who only waited count as
+  landing (seen in the browser with a looped clip); requiring visible knees instead dropped
+  most blurred Sprung flights. Misdetected skeletons can still last longer (2 s in one phone
+  export of someone waiting); their hints still come from where the gymnast stood.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.
