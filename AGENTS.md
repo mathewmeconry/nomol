@@ -73,18 +73,22 @@ Requirements, as agreed with the owner:
   they're test footage for later; or all at once in the settings. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
   Android won't share `.json` files).
 - **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer.
-  The picture (live or replay) is always shown whole. Where there's room, it's pinned to one edge
-  and the controls are docked in the free strip, never over the picture: in landscape a strip on
-  the right, in portrait at the bottom. The web app's live controls are laid out like a phone's
-  camera app (status and settings on top; the start mode as a button that opens a sheet of the
-  four ways to start, each with a picture, a sentence and the apparatus it suits, with that
-  sentence shown below it; lowest, within thumb reach, the newest clip, a large round record
-  button and the start zone). The replay isn't docked (see Replay); over it only the status, a
-  small record button and the settings stay. The web camera is asked for 4:3 (like the
-  sensor and the Android app): with 16:9 a Pixel 8 had only 183 px left for the strip. The
-  start zone editor says where the bottom edge goes and marks it on the picture. The web app's
+  The picture (live or replay) is always shown whole. Where there's room the controls are docked
+  in the free space, never over the picture: in portrait below it, in landscape around it (the
+  picture in the middle at full height, a strip on either side). The web app's live controls
+  are laid out like a phone's camera app (status and settings on top; the start mode as a
+  button that opens a sheet of the four ways to start, each with a picture, a sentence and the
+  apparatus it suits, with that sentence shown below it; lowest, within thumb reach, the newest
+  clip, a large round record button and the start zone). In landscape status, start mode and
+  sentence are left of the picture and the record row stands upright right of it, record button
+  in the middle, settings on top. The replay isn't docked (see Replay); over it only the status,
+  a small record button and the settings stay. The web camera is asked for 4:3 (like the sensor
+  and the Android app): with 16:9 a Pixel 8 had only 183 px left beside the picture. The start
+  zone editor says where the bottom edge goes and marks it on the picture; its bar goes in the
+  strip, or over the picture where the strip is narrower than 176 px. The web app's
   `screenLayout` (`packages/core/src/layout.ts`) decides from the measured screen and picture
-  shape: a side strip needs 176 px, a bottom strip 200 px, and the picture may shrink by up to
+  shape: the strips beside need 96 px (left) and 88 px (right), split evenly when wider, a
+  bottom strip 200 px, and the picture may shrink by up to
   10 % for it (phones in landscape need ~3 %, an upright camera in portrait ~7 %). Otherwise (a
   16:9 desktop window, a 4:3 tablet with a 4:3 picture) the controls float over the picture as
   before and fade during playback. A strip below the picture is only as high as its controls

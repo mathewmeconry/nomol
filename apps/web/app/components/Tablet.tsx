@@ -48,6 +48,8 @@ import { learnFloor, type FloorHint } from '@nomol/core/recording/floor-line';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
+/** Narrowest strip beside the picture that holds the zone editor's bar. */
+const ZONE_STRIP_MIN = 176;
 
 /**
  * The screen: runs camera → detection → session, records, and switches between the live
@@ -114,6 +116,8 @@ export default function Tablet() {
   const [strip, observeStrip] = useElementSize();
   /** In the strip, where the zone editor's bar goes. */
   const [stripSlot, setStripSlot] = useState<HTMLDivElement | null>(null);
+  /** Right of the picture in landscape, where the record button and its row go. */
+  const [recordSlot, setRecordSlot] = useState<HTMLDivElement | null>(null);
 
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
@@ -363,7 +367,11 @@ export default function Tablet() {
   );
 
   // A `contents` box: what's portalled into it takes part in the strip's own layout.
-  const slot = editingZone && <div ref={setStripSlot} className="contents" />;
+  // Its text and buttons need some width: left of a 16:9 picture the strip is too narrow, and the
+  // zone editor's bar goes over the picture as without a strip.
+  const zoneInStrip =
+    dock === 'bottom' || (dock === 'side' && (layout.strip?.width ?? 0) >= ZONE_STRIP_MIN);
+  const slot = editingZone && zoneInStrip && <div ref={setStripSlot} className="contents" />;
 
   const bar = (
     <LiveControls
@@ -399,6 +407,7 @@ export default function Tablet() {
         setCurrentId(clips[0].id);
         setView('replay');
       }}
+      recordSlot={recordSlot}
     >
       {slot}
     </LiveControls>
@@ -452,7 +461,7 @@ export default function Tablet() {
           {editingZone && (
             <ZoneEditor
               zones={zones}
-              dock={dock && stripSlot}
+              dock={zoneInStrip ? stripSlot : null}
               onCancel={() => setEditingZone(false)}
               onSave={(next) => {
                 saveZones(next);
@@ -488,16 +497,24 @@ export default function Tablet() {
       </div>
 
       {/*
-        Docked: the strip beside or below the picture. Its width decides whether rows join into
-        lines (`@container`). Below the picture it takes its controls' height, measured for
-        `screenLayout`, up to what's left beside the picture; beyond that its middle scrolls.
+        Docked: the strip below the picture, or the strips left and right of it. Their width
+        decides how the controls fit (`@container`). Below the picture the strip takes its
+        controls' height, measured for `screenLayout`, up to what's left beside the picture;
+        beyond that its middle scrolls.
       */}
+      {dock && layout.recordStrip && (
+        <div
+          ref={setRecordSlot}
+          className="@container absolute flex flex-col gap-2 border-l border-white/10 bg-zinc-950 p-2"
+          style={layout.recordStrip}
+        />
+      )}
       {dock && layout.strip ? (
         <div
           ref={observeStrip}
           className={cn(
             '@container absolute flex flex-col gap-2 bg-zinc-950',
-            dock === 'side' ? 'border-l border-white/10 p-2' : 'border-t border-white/10 p-3',
+            dock === 'side' ? 'border-r border-white/10 p-2' : 'border-t border-white/10 p-3',
           )}
           style={
             dock === 'side'

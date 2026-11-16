@@ -121,7 +121,8 @@ export default function ZoneEditor({ zones, onSave, onCancel, dock }: Props) {
           Standard
         </Button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      {/* Stacked in the narrow strip left of the picture. */}
+      <div className="grid grid-cols-2 gap-2 @max-3xs:grid-cols-1">
         <Button variant="outline" size="lg" onClick={onCancel}>
           Abbrechen
         </Button>

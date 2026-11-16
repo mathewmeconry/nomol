@@ -5,21 +5,27 @@ const WIDE = 16 / 9;
 const UPRIGHT = 9 / 16;
 
 describe('screenLayout', () => {
-  it('docks the controls beside the picture on a phone in landscape', () => {
-    expect(screenLayout(915, 412, WIDE)).toEqual({
+  it('puts the controls on either side of the picture on a phone in landscape', () => {
+    expect(screenLayout(915, 412, 4 / 3)).toEqual({
       dock: 'side',
-      picture: { left: 0, top: 0, width: 732, height: 412 },
-      strip: { left: 732, top: 0, width: 183, height: 412 },
+      picture: { left: 183, top: 0, width: 549, height: 412 },
+      strip: { left: 0, top: 0, width: 183, height: 412 },
+      recordStrip: { left: 732, top: 0, width: 183, height: 412 },
     });
   });
 
-  it('shrinks the picture a little when that makes room for the strip', () => {
-    const { dock, picture, strip } = screenLayout(844, 390, WIDE);
+  it('keeps the narrowest strips and shrinks the picture a little for them', () => {
+    expect(screenLayout(915, 412, WIDE)).toEqual({
+      dock: 'side',
+      picture: { left: 96, top: 1, width: 731, height: 411 },
+      strip: { left: 0, top: 0, width: 96, height: 412 },
+      recordStrip: { left: 827, top: 0, width: 88, height: 412 },
+    });
+    const { dock, picture, strip, recordStrip } = screenLayout(844, 390, WIDE);
     expect(dock).toBe('side');
-    expect(picture.height).toBe(375);
-    // Centred vertically in the space left of the strip.
-    expect(picture.top).toBe(8);
-    expect(strip).toEqual({ left: 668, top: 0, width: 176, height: 390 });
+    expect(picture).toEqual({ left: 96, top: 10, width: 660, height: 371 });
+    expect(strip?.width).toBe(96);
+    expect(recordStrip).toEqual({ left: 756, top: 0, width: 88, height: 390 });
   });
 
   it('docks the controls below the picture in portrait', () => {
@@ -27,6 +33,7 @@ describe('screenLayout', () => {
       dock: 'bottom',
       picture: { left: 0, top: 0, width: 412, height: 231 },
       strip: { left: 0, top: 231, width: 412, height: 684 },
+      recordStrip: null,
     });
   });
 
@@ -35,6 +42,7 @@ describe('screenLayout', () => {
       dock: 'bottom',
       picture: { left: 0, top: 198, width: 412, height: 309 },
       strip: { left: 0, top: 507, width: 412, height: 211 },
+      recordStrip: null,
     });
     // More than there's room for: the strip takes what's left and scrolls.
     expect(screenLayout(412, 915, 4 / 3, 2000).strip).toEqual({

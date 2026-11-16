@@ -1,5 +1,6 @@
 import { ChevronDown, Circle, Settings, Square, SquareDashed, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '~/components/ui/button';
 import StartModeSheet, { startMode } from '~/components/StartModeSheet';
 import type { RunUp } from '@nomol/core/detection/session';
@@ -47,11 +48,14 @@ type Props = {
   onClips: () => void;
   /** Docked: the zone editor's bar, in the strip's scrolling part. */
   children?: ReactNode;
+  /** Docked on the side: the strip right of the picture, for the record button and its row. */
+  recordSlot: HTMLElement | null;
 };
 
 /**
  * Laid out like a phone's camera app: status on top, then how recordings start, and a row with
- * the clips, a large round record button and the start zone, lowest within thumb reach.
+ * the clips, a large round record button and the start zone, lowest within thumb reach. In
+ * landscape that row stands upright right of the picture, the rest is left of it.
  */
 export default function LiveControls({
   dock,
@@ -69,6 +73,7 @@ export default function LiveControls({
   clips,
   onClips,
   children,
+  recordSlot,
 }: Props) {
   const [choosingMode, setChoosingMode] = useState(false);
   const recording = status === 'recording';
@@ -81,7 +86,10 @@ export default function LiveControls({
       role="status"
       className={cn(
         'flex min-w-0 items-center gap-2 leading-tight font-semibold',
-        dock ? 'flex-1' : cn(floating, 'rounded-full px-3 py-2 text-sm'),
+        dock === 'bottom' && 'flex-1',
+        // Left of a 16:9 picture the strip is narrow and longer states wrap over several lines.
+        dock === 'side' && 'items-baseline @max-[9rem]:text-sm',
+        !dock && cn(floating, 'rounded-full px-3 py-2 text-sm'),
         STATUS_STYLE[status],
       )}
     >
@@ -130,13 +138,16 @@ export default function LiveControls({
       onClick={() => setChoosingMode(true)}
       className={cn(
         'h-12 min-w-0 justify-between gap-2 rounded-xl text-left',
-        dock === 'side' ? 'w-full' : 'w-56',
+        // Left of the picture the strip may be narrow: the name wraps instead of being cut.
+        dock === 'side'
+          ? 'h-auto min-h-12 w-full py-2 whitespace-normal @max-[9rem]:px-2 @max-[9rem]:[&>svg]:hidden'
+          : 'w-56',
         !dock && floating,
       )}
     >
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="text-xs font-normal text-slate-400">Start</span>
-        <span className="truncate">{mode.short}</span>
+        <span className={cn(dock !== 'side' && 'truncate')}>{mode.short}</span>
       </span>
       <ChevronDown />
     </Button>
@@ -148,57 +159,73 @@ export default function LiveControls({
   );
 
   const itemLabel = 'text-[11px] leading-none font-semibold whitespace-nowrap text-slate-300';
-  // Smaller in a narrow strip beside the picture, so the labels don't run into each other.
+  // Smaller in a narrow strip, so the labels don't run into each other.
+  const clipsItem = latest ? (
+    <button type="button" onClick={onClips} className="flex flex-col items-center gap-1.5">
+      <span className="size-12 overflow-hidden rounded-lg border-2 border-white/30 bg-slate-800 @max-2xs:size-11">
+        {latest.thumbnail && (
+          <img src={latest.thumbnail} alt="" className="h-full w-full object-cover" />
+        )}
+      </span>
+      <span className={itemLabel}>Clips ({clips.length})</span>
+    </button>
+  ) : (
+    <span />
+  );
+  const recordItem = (
+    <button
+      type="button"
+      disabled={!recording && !canArm}
+      onClick={() => (recording ? onStop() : onArm(!armed))}
+      className="flex flex-col items-center gap-1.5 disabled:opacity-40"
+    >
+      <span
+        className={cn(
+          'flex size-16 items-center justify-center rounded-full border-4 @max-2xs:size-14',
+          recording ? 'border-red-500' : armed ? 'border-amber-300' : 'border-white',
+        )}
+      >
+        {recording ? (
+          <Square className="size-7 fill-red-500 text-red-500" />
+        ) : armed ? (
+          <X className="size-8 text-amber-300" />
+        ) : (
+          <span className="size-12 rounded-full bg-red-600 @max-2xs:size-10" />
+        )}
+      </span>
+      <span className={itemLabel}>{recording ? 'Stoppen' : armed ? 'Abbrechen' : 'Aufnehmen'}</span>
+    </button>
+  );
+  const zoneItem = (
+    <button
+      type="button"
+      disabled={recording}
+      onClick={() => onEditZone(true)}
+      className="flex flex-col items-center gap-1.5 disabled:opacity-40"
+    >
+      <span className="flex size-12 items-center justify-center rounded-full bg-white/10 @max-2xs:size-11">
+        <SquareDashed className="size-6 text-sky-300" />
+      </span>
+      <span className={itemLabel}>Startzone</span>
+    </button>
+  );
   const recordRow = (
     <div className="grid grid-cols-[1fr_auto_1fr] items-end justify-items-center gap-1">
-      {latest ? (
-        <button type="button" onClick={onClips} className="flex flex-col items-center gap-1.5">
-          <span className="size-12 overflow-hidden rounded-lg border-2 border-white/30 bg-slate-800 @max-2xs:size-11">
-            {latest.thumbnail && (
-              <img src={latest.thumbnail} alt="" className="h-full w-full object-cover" />
-            )}
-          </span>
-          <span className={itemLabel}>Clips ({clips.length})</span>
-        </button>
-      ) : (
-        <span />
-      )}
-      <button
-        type="button"
-        disabled={!recording && !canArm}
-        onClick={() => (recording ? onStop() : onArm(!armed))}
-        className="flex flex-col items-center gap-1.5 disabled:opacity-40"
-      >
-        <span
-          className={cn(
-            'flex size-16 items-center justify-center rounded-full border-4 @max-2xs:size-14',
-            recording ? 'border-red-500' : armed ? 'border-amber-300' : 'border-white',
-          )}
-        >
-          {recording ? (
-            <Square className="size-7 fill-red-500 text-red-500" />
-          ) : armed ? (
-            <X className="size-8 text-amber-300" />
-          ) : (
-            <span className="size-12 rounded-full bg-red-600 @max-2xs:size-10" />
-          )}
-        </span>
-        <span className={itemLabel}>
-          {recording ? 'Stoppen' : armed ? 'Abbrechen' : 'Aufnehmen'}
-        </span>
-      </button>
-      <button
-        type="button"
-        disabled={recording}
-        onClick={() => onEditZone(true)}
-        className="flex flex-col items-center gap-1.5 disabled:opacity-40"
-      >
-        <span className="flex size-12 items-center justify-center rounded-full bg-white/10 @max-2xs:size-11">
-          <SquareDashed className="size-6 text-sky-300" />
-        </span>
-        <span className={itemLabel}>Startzone</span>
-      </button>
+      {clipsItem}
+      {recordItem}
+      {zoneItem}
     </div>
+  );
+  // Right of the picture, as a phone's camera app held sideways: record button in the middle.
+  const recordColumn = (
+    <>
+      <div className="flex justify-center">{settings}</div>
+      <div className="flex flex-1 flex-col items-center justify-evenly">
+        {zoneItem}
+        {recordItem}
+        {clipsItem}
+      </div>
+    </>
   );
 
   const sheet = (
@@ -210,6 +237,20 @@ export default function LiveControls({
     />
   );
 
+  if (dock === 'side') {
+    return (
+      <>
+        {!editingZone && statusLine}
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-contain">
+          {live && modeButton}
+          {live && hint}
+          {children}
+        </div>
+        {live && recordSlot && createPortal(recordColumn, recordSlot)}
+        {sheet}
+      </>
+    );
+  }
   if (dock) {
     return (
       <>
@@ -217,19 +258,14 @@ export default function LiveControls({
           <div className="flex items-center gap-2">
             {statusLine}
             {/* Below the picture the strip may be only 200 px high: one row for both. */}
-            {live && dock === 'bottom' && modeButton}
+            {live && modeButton}
             {settings}
           </div>
         )}
         {/* Scrolls if the strip is too short; status and record row stay put. */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
-          {live && dock === 'side' && modeButton}
           {live && hint}
-          {dock === 'bottom' ? (
-            <div className="mt-auto flex flex-wrap items-center gap-2">{children}</div>
-          ) : (
-            children
-          )}
+          <div className="mt-auto flex flex-wrap items-center gap-2">{children}</div>
         </div>
         {live && recordRow}
         {sheet}
