@@ -44,7 +44,12 @@ Requirements, as agreed with the owner:
   where the feet are, i.e. where
   people stand after the element: at Sprung on the landing mat or behind it, not the mat's front
   edge (drawn there, nobody ever counted as standing and the next gymnast landed in the same
-  clip). Detection only looks at the zones, each on its own (with a margin for an automatic
+  clip). New users don't know this, so the app corrects a line drawn too low by itself
+  (`learnFloor`): when the gymnast stood still for 1 s after their last element clearly above
+  it, in two clips of the same zone that agree, the bottom edge moves up to their feet (never
+  down: feet below it count as standing anyway), with a note "Bodenlinie an die Landung
+  angepasst" and "Rückgängig". Drawing the zones anew or undoing forgets the hints (kept in
+  memory only). Detection only looks at the zones, each on its own (with a margin for an automatic
   start), and, while recording, around the gymnast (`detectionAreas`, see Stack).
 - **Camera:** selectable when a device has several (e.g. ultra-wide lens), remembered per device.
   Chrome on Android usually lists only front and back; there a "Weitwinkel (0,5×)" switch reaches
@@ -279,7 +284,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   lite switch.
 - `recording/`: `clip.ts` clips, trimming (`routineRange`) and skeleton interpolation
   (`poseAt`), `export.ts` the export format (`exportData`, `parseExport`), `preroll.ts` the
-  automatic start's look-back (`PREROLL_MAX_MS`, `tracePreroll`).
+  automatic start's look-back (`PREROLL_MAX_MS`, `tracePreroll`), `floor-line.ts` the floor
+  line learned from landings (`floorHint`, `learnFloor`).
 - `skeleton/rotation.ts`: the turned views, the tracking through a clip and the order of the
   passes (`skeletonPasses`) for the replay skeleton. `skeleton/lines.ts`: the skeleton's lines and colours, drawn by both apps.
 - `zoom.ts`: replay pinch zoom.
@@ -446,6 +452,16 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   (`gymnastArea`, `claimedByOthers`): 4350 instead of 3057 frames with the gymnast, 7 instead
   of 18 early stops. On 39 Sprung clips it followed the gymnast through landing and walk-off and
   stopped no later than the app had.
+- Learned floor line (`learnFloor`), checked on the 282 exports of November 14 and 15 2026
+  replayed in order per zone (the live tracked poses, no new detection): the Sprung line drawn
+  at the mat's front edge (0.794) moved to ~0.59 after the third clip with someone standing,
+  and 26 of 147 clips would have stopped earlier (~100 s less); one that ran through three
+  gymnasts ended after the first. The corrected Sprung line of the next day, and the Reck
+  zones, stayed. The floor track's line moved up (gymnasts standing at the far end, higher in
+  the picture), which is harmless there. Without the agreement of two clips, two people
+  standing far back would have moved a correct line; without the size check (1.5× the
+  gymnast's size at the start) 8 hints came from people further back, e.g. at a second Sprung
+  apparatus behind the first.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

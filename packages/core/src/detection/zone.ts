@@ -21,7 +21,7 @@ export type Zone = { left: number; top: number; right: number; bottom: number };
  * Feet may be this far above the floor line (relative to body size) and still count as standing
  * on the floor. Leaves room for landing mats (~30 cm) without counting support on a bar.
  */
-const FLOOR_TOLERANCE = 0.3;
+export const FLOOR_TOLERANCE = 0.3;
 
 export function isInZone(pose: Pose, zone: Zone): boolean {
   const hip = hipCenter(pose);
@@ -32,7 +32,7 @@ export function isInZone(pose: Pose, zone: Zone): boolean {
  * Standing on both legs keeps both knees clearly below the hips (≥ 0.13 body sizes in a phone
  * recording); a raised leg brings its knee up to hip height or above.
  */
-const KNEES_BELOW_HIPS = 0.1;
+export const KNEES_BELOW_HIPS = 0.1;
 
 /**
  * Both feet on the floor. Hands don't count, so a handstand isn't standing. The knees check

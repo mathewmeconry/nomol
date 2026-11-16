@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import ClipPlayer from '~/components/ClipPlayer';
 import ClipStrip from '~/components/ClipStrip';
+import FloorLineNote from '~/components/FloorLineNote';
 import LiveControls, { type Status } from '~/components/LiveControls';
 import LoadingScreen from '~/components/LoadingScreen';
 import Settings from '~/components/Settings';
@@ -42,6 +43,8 @@ import { cn } from 'cn';
 import { loadRunUp, loadZones, saveRunUp, saveZones } from '~/lib/zone-storage';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
 import { screenLayout } from '@nomol/core/layout';
+import type { Clip } from '@nomol/core/recording/clip';
+import { learnFloor, type FloorHint } from '@nomol/core/recording/floor-line';
 
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
@@ -94,6 +97,10 @@ export default function Tablet() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [view, setView] = useState<'live' | 'replay'>('live');
   const [editingZone, setEditingZone] = useState(false);
+  /** Recent `floorHint`s per zone; forgotten when the zones are drawn anew. */
+  const floorHintsRef = useRef<FloorHint[][]>([]);
+  /** The zones before the floor line last moved by itself, while that can be undone. */
+  const [floorUndo, setFloorUndo] = useState<Zone[] | null>(null);
   const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(() =>
@@ -151,9 +158,20 @@ export default function Tablet() {
     activeRef.current = null;
     const blob = await active.recording.stop();
     const { clip, routine } = toClip(active, blob, time);
+    adjustFloor(clip);
     addClip(clip, blob, active.samples, routine);
     setCurrentId(clip.id);
     setView('replay');
+  }
+
+  /** Moves the floor line of the zone the clip started in up to where gymnasts stand. */
+  function adjustFloor(clip: Clip) {
+    const learned = learnFloor(zones, clip.zone, clip, floorHintsRef.current);
+    floorHintsRef.current = learned.hints;
+    if (!learned.zones) return;
+    saveZones(learned.zones);
+    setZones(learned.zones);
+    setFloorUndo(zones);
   }
 
   /**
@@ -438,6 +456,8 @@ export default function Tablet() {
                 saveZones(next);
                 setZones(next);
                 setEditingZone(false);
+                floorHintsRef.current = [];
+                setFloorUndo(null);
               }}
             />
           )}
@@ -510,6 +530,19 @@ export default function Tablet() {
           setView('live');
         }}
       />
+
+      {floorUndo && !editingZone && (
+        <FloorLineNote
+          onUndo={() => {
+            saveZones(floorUndo);
+            setZones(floorUndo);
+            // Otherwise the next landing would move it straight back.
+            floorHintsRef.current = [];
+            setFloorUndo(null);
+          }}
+          onClose={() => setFloorUndo(null)}
+        />
+      )}
 
       {loading && <LoadingScreen message={loading} progress={downloadProgress} />}
     </div>

@@ -8,6 +8,8 @@ import {
   type SessionState,
 } from '@nomol/core/detection/session';
 import { detectionAreas, isInZone, type Zone } from '@nomol/core/detection/zone';
+import type { Clip } from '@nomol/core/recording/clip';
+import { learnFloor, type FloorHint } from '@nomol/core/recording/floor-line';
 import type { Seen } from '@nomol/core/recording/preroll';
 import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -48,6 +50,7 @@ import {
 } from '../lib/settings';
 import ClipPlayer from './ClipPlayer';
 import ClipStrip from './ClipStrip';
+import FloorLineNote from './FloorLineNote';
 import LiveControls, { type Status } from './LiveControls';
 import PersonBox from './PersonBox';
 import Settings from './Settings';
@@ -120,6 +123,12 @@ export default function Tablet() {
   /** Where the frame worklet currently saves stills (`saveStills`). */
   const stillsDirRef = useRef<string | null>(null);
   const clipStripScrollRef = useRef(0);
+  /** The start zone (one of `zones`) the running recording began in. */
+  const startZoneRef = useRef<Zone | null>(null);
+  /** Recent `floorHint`s per zone; forgotten when the zones are drawn anew. */
+  const floorHintsRef = useRef<FloorHint[][]>([]);
+  /** The zones before the floor line last moved by itself, while that can be undone. */
+  const [floorUndo, setFloorUndo] = useState<Zone[] | null>(null);
 
   const found =
     devices.find((d) => d.id === cameraId) ??
@@ -260,6 +269,7 @@ export default function Tablet() {
     });
     if (event.reason === 'runUp') addPreroll(active, seenRef.current, event.pose, poses, time);
     activeRef.current = active;
+    startZoneRef.current = event.zone;
     pauseSkeleton(true);
     saveStills(stillsPath(active));
     setRecordError(null);
@@ -271,10 +281,12 @@ export default function Tablet() {
     const active = activeRef.current;
     if (!active) return;
     activeRef.current = null;
+    const startZone = startZoneRef.current;
     saveStills(null);
     finishRecording(active)
       .then(
         (clip) => {
+          if (startZone) adjustFloor(startZone, clip);
           addClip(clip);
           setNextId(clip.id);
         },
@@ -283,6 +295,19 @@ export default function Tablet() {
       .finally(() => {
         if (!activeRef.current) pauseSkeleton(false);
       });
+  }
+
+  /**
+   * Moves the floor line of the zone the clip started in up to where gymnasts stand. The clip's
+   * own zone is mirrored for a front camera; its bottom edge is the same.
+   */
+  function adjustFloor(startZone: Zone, clip: Clip) {
+    const learned = learnFloor(zones, startZone, clip, floorHintsRef.current);
+    floorHintsRef.current = learned.hints;
+    if (!learned.zones) return;
+    saveZones(learned.zones);
+    setZones(learned.zones);
+    setFloorUndo(zones);
   }
 
   function onDetected({ poses, time, aspectRatio: frameAspect, still }: Detected) {
@@ -459,6 +484,8 @@ export default function Tablet() {
             saveZones(next);
             setZones(next);
             setEditingZone(false);
+            floorHintsRef.current = [];
+            setFloorUndo(null);
           }}
         />
       ) : (
@@ -489,6 +516,19 @@ export default function Tablet() {
           )}
           {!showReplay && clips.length > 0 && <View style={styles.strip}>{clipStrip}</View>}
         </>
+      )}
+
+      {floorUndo && !editingZone && (
+        <FloorLineNote
+          onUndo={() => {
+            saveZones(floorUndo);
+            setZones(floorUndo);
+            // Otherwise the next landing would move it straight back.
+            floorHintsRef.current = [];
+            setFloorUndo(null);
+          }}
+          onClose={() => setFloorUndo(null)}
+        />
       )}
 
       {(error ?? recordError ?? detection.error) !== null && (
