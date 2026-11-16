@@ -1,16 +1,10 @@
-import { Circle, Settings, Square, SquareDashed, X, Zap } from 'lucide-react';
+import { ChevronDown, Circle, Settings, Square, SquareDashed, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { Button } from '~/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '~/components/ui/select';
-import { Toggle } from '~/components/ui/toggle';
+import StartModeSheet, { startMode } from '~/components/StartModeSheet';
 import type { RunUp } from '@nomol/core/detection/session';
 import type { Dock } from '@nomol/core/layout';
-import { parseRunUp } from '@nomol/core/settings';
+import type { Clip } from '@nomol/core/recording/clip';
 import { cn } from 'cn';
 
 export type Status = 'idle' | 'sign' | 'armed' | 'recording';
@@ -29,22 +23,11 @@ const STATUS_STYLE: Record<Status, string> = {
   recording: 'text-red-300',
 };
 
-const START_MODES = [
-  { value: 'sign', label: 'Start mit Zeichen' },
-  { value: 'left', label: 'Auto von links' },
-  { value: 'right', label: 'Auto von rechts' },
-  { value: 'any', label: 'Auto bei Tempo' },
-] as const;
-
-/** Controls float over the camera image, so they get a dark, blurred backing. */
-const floating =
-  'rounded-full bg-black/60 font-semibold backdrop-blur hover:bg-black/75 data-[state=on]:bg-black/75 data-[state=on]:text-sky-300';
-/** Beside the picture, on the strip's black. */
-const docked =
-  'rounded-full bg-white/10 font-semibold hover:bg-white/15 data-[state=on]:bg-white/15 data-[state=on]:text-sky-300';
+/** Controls over the camera image get a dark, blurred backing. */
+const floating = 'bg-black/60 backdrop-blur';
 
 type Props = {
-  /** Where the bar sits: in the strip beside or below the picture, or over it (null). */
+  /** Where the controls sit: in the strip beside or below the picture, or over it (null). */
   dock: Dock;
   status: Status;
   runUp: RunUp | null;
@@ -57,13 +40,18 @@ type Props = {
   onArm: (armed: boolean) => void;
   onStop: () => void;
   onSettings: () => void;
+  /** A clip is on screen: only the status and a small record button stay. */
+  replay: boolean;
+  /** Newest first. */
+  clips: Clip[];
+  onClips: () => void;
+  /** Docked: the replay controls or the zone editor's bar, in the strip's scrolling part. */
+  children?: ReactNode;
 };
 
 /**
- * The bar with status, start mode, start zone, settings and record button. Over the picture
- * it's one wrapping row, so the two groups stack instead of overlapping on narrow phones. In a
- * strip it's rows: three beside the picture, two below it with the record button lowest, within
- * thumb reach. Hidden while drawing the zone, whose own bar takes its place.
+ * Laid out like a phone's camera app: status on top, then how recordings start, and a row with
+ * the clips, a large round record button and the start zone, lowest within thumb reach.
  */
 export default function LiveControls({
   dock,
@@ -77,143 +65,197 @@ export default function LiveControls({
   onArm,
   onStop,
   onSettings,
+  replay,
+  clips,
+  onClips,
+  children,
 }: Props) {
+  const [choosingMode, setChoosingMode] = useState(false);
   const recording = status === 'recording';
-  const look = dock ? docked : floating;
+  const live = !replay && !editingZone;
+  const mode = startMode(runUp);
+  const latest = clips[0];
 
-  const statusPill = (
-    <span
+  const statusLine = (
+    <p
+      role="status"
       className={cn(
-        look,
-        'inline-flex min-h-8 items-center gap-2 px-3 text-sm',
-        dock && 'min-w-0 py-1 leading-tight',
+        'flex min-w-0 items-center gap-2 leading-tight font-semibold',
+        dock ? 'flex-1' : cn(floating, 'rounded-full px-3 py-2 text-sm'),
         STATUS_STYLE[status],
       )}
     >
-      <span aria-hidden className="size-2 shrink-0 rounded-full bg-current" />
+      <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-current" />
       {STATUS_TEXT[status]}
-    </span>
-  );
-  const startMode = (
-    <Select
-      value={runUp ?? 'sign'}
-      disabled={recording}
-      onValueChange={(value) => onRunUp(parseRunUp(value))}
-    >
-      <SelectTrigger
-        size="sm"
-        aria-label="Start"
-        className={cn(
-          look,
-          'border-0',
-          dock ? 'w-full min-w-0' : 'max-w-40 sm:max-w-60',
-          runUp && 'text-sky-300',
-        )}
-      >
-        {/* Beside the picture the icon would cut off "Auto bei Tempo". */}
-        {dock !== 'side' && <Zap />}
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {START_MODES.map((mode) => (
-          <SelectItem key={mode.value} value={mode.value}>
-            {mode.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-  const zoneToggle = (
-    <Toggle
-      size="sm"
-      pressed={editingZone}
-      disabled={recording}
-      onPressedChange={onEditZone}
-      className={cn(look, dock && 'px-3')}
-    >
-      <SquareDashed />
-      Startzone
-    </Toggle>
+    </p>
   );
   const settings = (
     <Button
-      size="icon-sm"
+      size="icon"
       variant="ghost"
       aria-label="Einstellungen"
       onClick={onSettings}
-      className={look}
+      className={cn('shrink-0 rounded-full text-slate-300', !dock && floating)}
     >
       <Settings />
     </Button>
   );
-  const record = recording ? (
+  // While a clip is on screen there's no room for the record row, but a recording can still run.
+  const smallRecord = recording ? (
     <Button
-      size="icon-sm"
+      size="icon"
       variant="destructive"
       aria-label="Aufnahme stoppen"
       onClick={onStop}
-      className="rounded-full"
+      className="shrink-0 rounded-full"
     >
       <Square className="fill-current" />
     </Button>
   ) : (
     <Button
-      size="icon-sm"
+      size="icon"
       variant={armed ? 'ghost' : 'destructive'}
       aria-label={armed ? 'Abbrechen' : 'Aufnahme starten'}
-      disabled={!canArm || editingZone}
+      disabled={!canArm}
       onClick={() => onArm(!armed)}
-      className={cn('rounded-full', armed && look)}
+      className={cn('shrink-0 rounded-full', armed && floating)}
     >
       {armed ? <X /> : <Circle className="fill-current" />}
     </Button>
   );
-
-  if (dock && editingZone) return null;
-  if (dock === 'side') {
-    return (
-      <div className="flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-2">
-          {statusPill}
-          {settings}
-        </div>
-        {startMode}
-        <div className="flex items-center justify-between gap-2">
-          {zoneToggle}
-          {record}
-        </div>
-      </div>
-    );
-  }
-  if (dock === 'bottom') {
-    return (
-      <div className="flex w-full flex-col gap-2 @xl:flex-row @xl:items-center">
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1 @xl:w-48 @xl:flex-none">{startMode}</div>
-          {zoneToggle}
-        </div>
-        <div className="flex items-center gap-2 @xl:flex-1">
-          <div className="flex min-w-0 flex-1">{statusPill}</div>
-          {settings}
-          {record}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div
+  const modeButton = (
+    <Button
+      variant="secondary"
+      disabled={recording}
+      onClick={() => setChoosingMode(true)}
       className={cn(
-        'pointer-events-none absolute inset-x-3 top-3 z-20 flex flex-wrap items-center justify-between gap-2 *:pointer-events-auto',
-        editingZone && 'hidden',
+        'h-12 min-w-0 justify-between gap-2 rounded-xl text-left',
+        dock === 'side' ? 'w-full' : 'w-56',
+        !dock && floating,
       )}
     >
-      {statusPill}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {startMode}
-        {zoneToggle}
-        {settings}
-        {record}
-      </div>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="text-xs font-normal text-slate-400">Start</span>
+        <span className="truncate">{mode.short}</span>
+      </span>
+      <ChevronDown />
+    </Button>
+  );
+  const hint = status === 'idle' && (
+    <p className={cn('text-sm leading-snug text-slate-300', !dock && 'max-w-sm text-center')}>
+      {mode.description}
+    </p>
+  );
+
+  const itemLabel = 'text-[11px] leading-none font-semibold whitespace-nowrap text-slate-300';
+  // Smaller in a narrow strip beside the picture, so the labels don't run into each other.
+  const recordRow = (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-end justify-items-center gap-1">
+      {latest ? (
+        <button type="button" onClick={onClips} className="flex flex-col items-center gap-1.5">
+          <span className="size-12 overflow-hidden rounded-lg border-2 border-white/30 bg-slate-800 @max-2xs:size-11">
+            {latest.thumbnail && (
+              <img src={latest.thumbnail} alt="" className="h-full w-full object-cover" />
+            )}
+          </span>
+          <span className={itemLabel}>Clips ({clips.length})</span>
+        </button>
+      ) : (
+        <span />
+      )}
+      <button
+        type="button"
+        disabled={!recording && !canArm}
+        onClick={() => (recording ? onStop() : onArm(!armed))}
+        className="flex flex-col items-center gap-1.5 disabled:opacity-40"
+      >
+        <span
+          className={cn(
+            'flex size-16 items-center justify-center rounded-full border-4 @max-2xs:size-14',
+            recording ? 'border-red-500' : armed ? 'border-amber-300' : 'border-white',
+          )}
+        >
+          {recording ? (
+            <Square className="size-7 fill-red-500 text-red-500" />
+          ) : armed ? (
+            <X className="size-8 text-amber-300" />
+          ) : (
+            <span className="size-12 rounded-full bg-red-600 @max-2xs:size-10" />
+          )}
+        </span>
+        <span className={itemLabel}>
+          {recording ? 'Stoppen' : armed ? 'Abbrechen' : 'Aufnehmen'}
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={recording}
+        onClick={() => onEditZone(true)}
+        className="flex flex-col items-center gap-1.5 disabled:opacity-40"
+      >
+        <span className="flex size-12 items-center justify-center rounded-full bg-white/10 @max-2xs:size-11">
+          <SquareDashed className="size-6 text-sky-300" />
+        </span>
+        <span className={itemLabel}>Startzone</span>
+      </button>
     </div>
+  );
+
+  const sheet = (
+    <StartModeSheet
+      open={choosingMode}
+      onOpenChange={setChoosingMode}
+      runUp={runUp}
+      onRunUp={onRunUp}
+    />
+  );
+
+  if (dock) {
+    return (
+      <>
+        {!editingZone && (
+          <div className="flex items-center gap-2">
+            {statusLine}
+            {/* Below the picture the strip may be only 200 px high: one row for both. */}
+            {live && dock === 'bottom' && modeButton}
+            {replay && smallRecord}
+            {settings}
+          </div>
+        )}
+        {/* Scrolls if the strip is too short; status and record row stay put. */}
+        <div
+          data-scroll-area
+          className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain"
+        >
+          {live && dock === 'side' && modeButton}
+          {live && hint}
+          {dock === 'bottom' ? (
+            <div className="mt-auto flex flex-wrap items-center gap-2">{children}</div>
+          ) : (
+            children
+          )}
+        </div>
+        {live && recordRow}
+        {sheet}
+      </>
+    );
+  }
+  if (editingZone) return null;
+  return (
+    <>
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex items-start gap-2 *:pointer-events-auto">
+        {statusLine}
+        <span className="flex-1" />
+        {live ? modeButton : smallRecord}
+        {settings}
+      </div>
+      {live && (
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex flex-col items-center gap-2 *:pointer-events-auto">
+          {hint && <div className={cn(floating, 'rounded-xl px-4 py-2')}>{hint}</div>}
+          <div className={cn(floating, 'w-72 rounded-3xl px-2 py-2')}>{recordRow}</div>
+        </div>
+      )}
+      {sheet}
+    </>
   );
 }

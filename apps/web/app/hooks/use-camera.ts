@@ -11,16 +11,22 @@ export type CameraState =
  * `smooth` insists on 60 fps at 720p: asked for 1080p at an ideal 60, phones delivered 1080p at
  * 22–33 fps, and in dim gyms they lengthen the exposure, which blurs fast elements. Not every
  * camera can, so the sharpest picture at any frame rate is the fallback.
+ *
+ * 4:3 like the sensor (and the Android app): on a phone a 16:9 picture left too little room
+ * beside or below it for the controls. Only the camera's own sizes (`resizeMode`): Chrome would
+ * otherwise cut 4:3 out of a 16:9 mode, narrowing the view. Without 4:3 at 50 fps it picks the
+ * nearest size that has it, e.g. 1280×720.
  */
 function constraints(deviceId: string | null, smooth: boolean): MediaStreamConstraints {
-  // Zoom isn't in TypeScript's DOM types yet. Chrome only reports zoom (and with it the
-  // ultra-wide lens) when asked for it.
-  const video: MediaTrackConstraints & { zoom: boolean } = {
+  // Zoom and resizeMode aren't in TypeScript's DOM types yet. Chrome only reports zoom (and with
+  // it the ultra-wide lens) when asked for it.
+  const video: MediaTrackConstraints & { zoom: boolean; resizeMode: string } = {
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
     ...(smooth
-      ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { min: 50, ideal: 60 } }
-      : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }),
+      ? { width: { ideal: 1280 }, height: { ideal: 960 }, frameRate: { min: 50, ideal: 60 } }
+      : { width: { ideal: 1440 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }),
     zoom: true,
+    resizeMode: 'none',
   };
   return { audio: false, video };
 }

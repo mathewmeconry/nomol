@@ -53,70 +53,87 @@ export default function ZoneEditor({ zones, onSave, onCancel, dock }: Props) {
   const bar = (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2 select-none',
+        'flex flex-col gap-3 select-none',
         dock
           ? 'w-full'
-          : 'fixed inset-x-3 z-30 rounded-xl bg-slate-900/85 px-3 py-2 backdrop-blur transition-opacity',
+          : 'fixed inset-x-3 z-30 mx-auto max-w-xl rounded-xl bg-slate-900/90 p-3 backdrop-blur transition-opacity',
         !dock && (drafts[selected].bottom > 0.5 ? 'top-3' : 'bottom-3'),
         !dock && anchor && 'pointer-events-none opacity-0',
       )}
     >
-      <p className="min-w-40 flex-1 text-sm text-slate-300">
-        {tooSmall
-          ? 'Zu klein. Zieh einen grösseren Bereich auf.'
-          : several
-            ? `Zieh Startzone ${selected + 1} auf. Die untere Kante ist der Boden.`
-            : 'Zieh die Startzone auf. Die untere Kante ist der Boden.'}
-      </p>
-      {several &&
-        drafts.map((_draft, i) => (
-          <Button
-            key={i}
-            variant={i === selected ? 'default' : 'outline'}
-            aria-pressed={i === selected}
-            onClick={() => setSelected(i)}
-          >
-            Zone {i + 1}
-          </Button>
-        ))}
-      {several ? (
-        <Button
-          variant="outline"
-          onClick={() => {
-            setDrafts(drafts.filter((_draft, i) => i !== selected));
-            setSelected(0);
-          }}
-        >
-          Zone {selected + 1} entfernen
-        </Button>
-      ) : (
-        drafts.length < MAX_ZONES && (
+      <div>
+        <p className="font-bold">{several ? `Startzone ${selected + 1}` : 'Startzone'}</p>
+        {/* Where the bottom edge goes is what coaches got wrong: it's the floor line. */}
+        <p className="mt-1 text-sm leading-snug text-slate-300">
+          {tooSmall ? (
+            'Zu klein. Zieh einen grösseren Bereich auf.'
+          ) : (
+            <>
+              Zieh einen Rahmen um die Stelle, wo gestartet wird. Die{' '}
+              <strong className="text-amber-300">untere Kante</strong> gehört dahin, wo die Füsse
+              nach dem Element stehen (Sprung: auf oder hinter der Landematte).
+            </>
+          )}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {several &&
+          drafts.map((_draft, i) => (
+            <Button
+              key={i}
+              variant={i === selected ? 'default' : 'outline'}
+              aria-pressed={i === selected}
+              onClick={() => setSelected(i)}
+            >
+              Zone {i + 1}
+            </Button>
+          ))}
+        {several ? (
           <Button
             variant="outline"
             onClick={() => {
-              setDrafts([...drafts, secondZone(drafts[0])]);
-              setSelected(drafts.length);
+              setDrafts(drafts.filter((_draft, i) => i !== selected));
+              setSelected(0);
             }}
           >
-            Zweite Zone
+            Zone {selected + 1} entfernen
           </Button>
-        )
-      )}
-      <Button
-        variant="outline"
-        onClick={() => {
-          setDrafts([DEFAULT_ZONE]);
-          setSelected(0);
-        }}
-      >
-        Standard
-      </Button>
-      <Button variant="outline" onClick={onCancel}>
-        Abbrechen
-      </Button>
-      <Button disabled={tooSmall} onClick={() => onSave(drafts)}>
-        Speichern
-      </Button>
+        ) : (
+          drafts.length < MAX_ZONES && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDrafts([...drafts, secondZone(drafts[0])]);
+                setSelected(drafts.length);
+              }}
+            >
+              Zweite Zone
+            </Button>
+          )
+        )}
+        <Button
+          variant="outline"
+          onClick={() => {
+            setDrafts([DEFAULT_ZONE]);
+            setSelected(0);
+          }}
+        >
+          Standard
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" size="lg" onClick={onCancel}>
+          Abbrechen
+        </Button>
+        <Button
+          size="lg"
+          disabled={tooSmall}
+          onClick={() => onSave(drafts)}
+          className="bg-sky-400 text-slate-950 hover:bg-sky-300"
+        >
+          Speichern
+        </Button>
+      </div>
     </div>
   );
 
@@ -143,7 +160,7 @@ export default function ZoneEditor({ zones, onSave, onCancel, dock }: Props) {
             className={cn(
               'absolute border-2 border-b-4',
               i === selected
-                ? 'border-sky-300 bg-sky-400/15'
+                ? 'border-sky-300 border-b-amber-300 bg-sky-400/15'
                 : 'border-slate-300/60 bg-slate-300/10',
             )}
             style={{
@@ -160,11 +177,11 @@ export default function ZoneEditor({ zones, onSave, onCancel, dock }: Props) {
             )}
             <span
               className={cn(
-                'absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full rounded px-1.5 text-xs font-semibold text-slate-950',
-                i === selected ? 'bg-sky-300' : 'bg-slate-300/80',
+                'absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full rounded px-1.5 text-xs font-semibold whitespace-nowrap text-slate-950',
+                i === selected ? 'bg-amber-300' : 'bg-slate-300/80',
               )}
             >
-              Boden
+              {i === selected ? 'Boden · hier stehen die Füsse' : 'Boden'}
             </span>
           </div>
         ))}

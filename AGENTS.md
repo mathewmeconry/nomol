@@ -69,15 +69,20 @@ Requirements, as agreed with the owner:
 - **Screen space:** must work on phones and tablets, landscape and portrait. No header/footer.
   The picture (live or replay) is always shown whole. Where there's room, it's pinned to one edge
   and the controls are docked in the free strip, never over the picture: in landscape a strip on
-  the right (bar, then replay controls, start hint and clips), in portrait at the bottom (replay
-  controls, then the bar with the record button lowest, within thumb reach). The web app's
+  the right, in portrait at the bottom. The web app's live controls are laid out like a phone's
+  camera app (status and settings on top; the start mode as a button that opens a sheet of the
+  four ways to start, each with a picture, a sentence and the apparatus it suits, with that
+  sentence shown below it; lowest, within thumb reach, the newest clip, a large round record
+  button and the start zone). While a clip is on screen the replay controls take their place
+  and only the status and a small record button stay. The web camera is asked for 4:3 (like the
+  sensor and the Android app): with 16:9 a Pixel 8 had only 183 px left for the strip. The
+  start zone editor says where the bottom edge goes and marks it on the picture. The web app's
   `screenLayout` (`packages/core/src/layout.ts`) decides from the measured screen and picture
   shape: a side strip needs 176 px, a bottom strip 200 px, and the picture may shrink by up to
   10 % for it (phones in landscape need ~3 %, an upright camera in portrait ~7 %). Otherwise (a
   16:9 desktop window, a 4:3 tablet with a 4:3 picture) the controls float over the picture as
-  before and fade during playback. In a short strip the bar stays put and the rest scrolls. The
-  bar keeps only the status, start mode, start zone, settings and an icon-only record button.
-  Every tap enters fullscreen (not on iPhone); installed to the home screen it starts fullscreen.
+  before and fade during playback. In a short strip the status and record row stay put and the
+  rest scrolls. Every tap enters fullscreen (not on iPhone); installed to the home screen it starts fullscreen.
 - **Offline:** after one visit with internet the app and model work without a connection.
 - **No server for now.** Everything runs and stays on the device. A server is a later discussion.
 - **Privacy:** never commit or publish videos or exports of people (`.gitignore` blocks them).
@@ -220,7 +225,7 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   add components with `pnpm exec shadcn add <name>` in `apps/web`; join classes with `cn` from the `cn` package
   (shadcn's replacement for clsx + tailwind-merge), never with template strings. Always dark
   (`<html class="dark">`); controls over the video use the `floating` style in
-  `LiveControls.tsx`, docked beside it the `docked` one.
+  `LiveControls.tsx`.
 - zod for validation
 - Pose detection: MediaPipe Pose Landmarker (`@mediapipe/tasks-vision`) in the browser, up to 4
   people per frame, in a worker (`pose.worker.ts`): each camera frame
@@ -324,9 +329,9 @@ shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` 
   and the docked strip (`screenLayout`). The replay controls and the zone editor's bar are
   portalled into the strip; the live video element is never remounted, so docked over the
   replay it is laid over its slot among the controls (`use-screen-box`).
-- `components/LiveControls.tsx`, `Settings.tsx`, `StartHint.tsx`, `LoadingScreen.tsx`: the
-  bar (over the picture or docked), the settings dialog, the start hint, the loading/error
-  screen.
+- `components/LiveControls.tsx`, `StartModeSheet.tsx`, `Settings.tsx`, `LoadingScreen.tsx`:
+  the live controls (over the picture or docked), the start mode sheet, the settings dialog,
+  the loading/error screen.
 - `components/ClipPlayer.tsx`, `ClipStrip.tsx`, `ZoneEditor.tsx`: replay, clip list, coach
   zone drawing.
 - `hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`

@@ -4,7 +4,6 @@ import ClipStrip from '~/components/ClipStrip';
 import LiveControls, { type Status } from '~/components/LiveControls';
 import LoadingScreen from '~/components/LoadingScreen';
 import Settings from '~/components/Settings';
-import StartHint from '~/components/StartHint';
 import ZoneEditor from '~/components/ZoneEditor';
 import useCamera from '~/hooks/use-camera';
 import useCameras from '~/hooks/use-cameras';
@@ -350,6 +349,9 @@ export default function Tablet() {
     />
   );
 
+  // A `contents` box: what's portalled into it takes part in the strip's own layout.
+  const slot = (showReplay || editingZone) && <div ref={setStripSlot} className="contents" />;
+
   const bar = (
     <LiveControls
       dock={dock}
@@ -378,14 +380,16 @@ export default function Tablet() {
         void finishRecording(lastFrameTimeRef.current);
       }}
       onSettings={() => setSettingsOpen(true)}
-    />
+      replay={showReplay}
+      clips={clips}
+      onClips={() => {
+        setCurrentId(clips[0].id);
+        setView('replay');
+      }}
+    >
+      {slot}
+    </LiveControls>
   );
-  const startHint = !showReplay && !editingZone && status === 'idle' && !loading && (
-    <StartHint runUp={runUp} aboveClips={clips.length > 0} docked={dock !== null} />
-  );
-  const liveClips = !showReplay && !editingZone && clips.length > 0;
-  // A `contents` box: what's portalled into it takes part in the strip's own layout.
-  const slot = (showReplay || editingZone) && <div ref={setStripSlot} className="contents" />;
 
   return (
     <div ref={observeScreen} className="relative h-dvh overflow-hidden bg-black text-slate-100">
@@ -508,7 +512,7 @@ export default function Tablet() {
 
       {/*
         Docked: the strip beside or below the picture. Its width decides whether rows join into
-        lines (`@container`). The bar stays put; the rest scrolls if the strip is too short.
+        lines (`@container`).
       */}
       {layout.strip ? (
         <div
@@ -518,26 +522,7 @@ export default function Tablet() {
           )}
           style={layout.strip}
         >
-          {dock === 'side' && bar}
-          <div
-            data-scroll-area
-            className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain"
-          >
-            {dock === 'side' ? (
-              <>
-                {slot}
-                {startHint}
-                {liveClips && <div className="mt-auto">{clipStrip}</div>}
-              </>
-            ) : (
-              <div className="mt-auto flex flex-wrap items-center gap-2">
-                {slot}
-                {startHint}
-                {liveClips && <div className="w-full">{clipStrip}</div>}
-              </div>
-            )}
-          </div>
-          {dock === 'bottom' && bar}
+          {bar}
         </div>
       ) : (
         bar
@@ -570,9 +555,6 @@ export default function Tablet() {
           setView('live');
         }}
       />
-
-      {!dock && startHint}
-      {!dock && liveClips && <div className="absolute inset-x-4 bottom-4 z-20">{clipStrip}</div>}
 
       {loading && <LoadingScreen message={loading} progress={downloadProgress} />}
     </div>
