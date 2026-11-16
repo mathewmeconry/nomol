@@ -14,8 +14,8 @@ import { learnFloor, type FloorHint } from '@nomol/core/recording/floor-line';
 import type { Seen } from '@nomol/core/recording/preroll';
 import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { callback } from 'react-native-nitro-modules';
 import {
@@ -286,6 +286,18 @@ export default function Tablet() {
       seenRef.current = [];
     };
   }, [clipRecorder, buffering]);
+
+  // Back returns to the live picture and never leaves the app, which hangs at the apparatus and
+  // would otherwise close by a stray swipe. Settings and the start sheet close on it themselves.
+  const onBack = useEffectEvent(() => {
+    if (editingZone) setEditingZone(false);
+    else showLive();
+    return true;
+  });
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => subscription.remove();
+  }, []);
 
   /** The live picture, chosen by hand: a clip waiting to be shown stays in the list only. */
   function showLive() {
