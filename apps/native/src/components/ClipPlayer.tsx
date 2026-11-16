@@ -1,9 +1,18 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Point } from '@nomol/core/detection/pose';
 import { frameDuration, poseAt, routineRange, type Clip } from '@nomol/core/recording/clip';
 import { FULL_VIEW, zoomView, type View as Zoom } from '@nomol/core/zoom';
 import { useEvent, useEventListener } from 'expo';
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Pause,
+  Play,
+  Share,
+  Trash2,
+} from 'lucide-react-native';
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { exportClip } from '../lib/clip-store';
@@ -20,11 +29,11 @@ const SPEEDS = [
 ];
 
 const STEPS = [
-  { frames: -5, icon: 'chevron-double-left', name: '5 Bilder zurück' },
-  { frames: -1, icon: 'chevron-left', name: '1 Bild zurück' },
-  { frames: 1, icon: 'chevron-right', name: '1 Bild vor' },
-  { frames: 5, icon: 'chevron-double-right', name: '5 Bilder vor' },
-] as const;
+  { frames: -5, Icon: ChevronsLeft, name: '5 Bilder zurück' },
+  { frames: -1, Icon: ChevronLeft, name: '1 Bild zurück' },
+  { frames: 1, Icon: ChevronRight, name: '1 Bild vor' },
+  { frames: 5, Icon: ChevronsRight, name: '5 Bilder vor' },
+];
 
 const SKELETON_TEXT: Record<SkeletonProgress['stage'], string> = {
   compute: 'Skelett wird berechnet …',
@@ -326,17 +335,21 @@ export default function ClipPlayer({
             accessibilityLabel={isPlaying ? 'Pause' : 'Abspielen'}
             onPress={togglePlay}
           >
-            <MaterialCommunityIcons name={isPlaying ? 'pause' : 'play'} size={22} color="#020618" />
+            {isPlaying ? (
+              <Pause size={20} color="#020618" fill="#020618" />
+            ) : (
+              <Play size={20} color="#020618" fill="#020618" />
+            )}
           </Pressable>
           <View style={styles.group} accessibilityLabel="Bild für Bild">
-            {STEPS.map(({ frames, icon, name }) => (
+            {STEPS.map(({ frames, Icon, name }) => (
               <Pressable
                 key={frames}
                 style={styles.button}
                 accessibilityLabel={name}
                 onPress={() => seek(timeMs + frames * frameDuration(clip))}
               >
-                <MaterialCommunityIcons name={icon} size={22} color={colors.text} />
+                <Icon size={20} color={colors.text} />
               </Pressable>
             ))}
           </View>
@@ -378,7 +391,7 @@ export default function ClipPlayer({
               }
             }}
           >
-            <MaterialCommunityIcons name="share-variant" size={18} color={colors.text} />
+            <Share size={18} color={colors.text} />
             {exportFailed && <Text style={styles.text}>Export fehlgeschlagen</Text>}
           </Pressable>
           {/* Two taps, because the clip is gone for good. */}
@@ -387,11 +400,7 @@ export default function ClipPlayer({
             accessibilityLabel="Löschen"
             onPress={() => (confirmingDelete ? onDelete() : setConfirmingDelete(true))}
           >
-            <MaterialCommunityIcons
-              name="trash-can-outline"
-              size={18}
-              color={confirmingDelete ? colors.text : colors.red}
-            />
+            <Trash2 size={18} color={confirmingDelete ? colors.text : colors.red} />
             {confirmingDelete && <Text style={styles.text}>Wirklich löschen?</Text>}
           </Pressable>
           <Pressable style={styles.button} onPress={onLive}>

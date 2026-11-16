@@ -8,17 +8,8 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import type { RunUp } from '@nomol/core/detection/session';
+import { START_MODES, START_MODES_NOTE } from '@nomol/core/start-modes';
 import { cn } from 'cn';
-
-type StartMode = {
-  runUp: RunUp | null;
-  title: string;
-  /** On the button that opens the sheet. */
-  short: string;
-  description: string;
-  goodFor: string;
-  picture: ReactNode;
-};
 
 const strokes = {
   fill: 'none',
@@ -43,67 +34,33 @@ function zoneRect(x: number) {
   );
 }
 
-const START_MODES: StartMode[] = [
-  {
-    runUp: null,
-    title: 'Mit Zeichen',
-    short: 'Mit Zeichen',
-    description: 'Du kreuzt in der Startzone die Arme über dem Kopf und hältst 1 Sekunde.',
-    goodFor: 'Reck, Ringe, Boden, Barren',
-    picture: (
-      <>
-        <path d="M28 24v14M28 38l-4 10M28 38l4 10M25 26l-6-8 15-9M31 26l6-8-15-9" {...strokes} />
-        <circle cx="28" cy="20" r="3.5" fill="currentColor" />
-      </>
-    ),
-  },
-  {
-    runUp: 'left',
-    title: 'Automatisch, Anlauf von links',
-    short: 'Anlauf von links',
-    description:
-      'Startet, wenn jemand von links in die Startzone rennt. Wer zurückgeht, startet nichts.',
-    goodFor: 'Sprung',
-    picture: (
-      <>
-        {zoneRect(30)}
-        <path d="M6 30h20m-6-6 6 6-6 6" {...strokes} />
-      </>
-    ),
-  },
-  {
-    runUp: 'right',
-    title: 'Automatisch, Anlauf von rechts',
-    short: 'Anlauf von rechts',
-    description:
-      'Startet, wenn jemand von rechts in die Startzone rennt. Wer zurückgeht, startet nichts.',
-    goodFor: 'Sprung',
-    picture: (
-      <>
-        {zoneRect(6)}
-        <path d="M50 30H30m6-6-6 6 6 6" {...strokes} />
-      </>
-    ),
-  },
-  {
-    runUp: 'any',
-    title: 'Automatisch bei Tempo',
-    short: 'Bei Tempo',
-    description:
-      'Startet, wenn sich jemand in der Startzone schneller als Gehen bewegt, egal wohin.',
-    goodFor: 'Ringe (Schwingen), Boden (Anlauf)',
-    picture: (
-      <>
-        <path d="M14 40 28 16l14 24" {...strokes} />
-        <path d="M8 30h6M8 36h4M42 30h6M44 36h4" {...strokes} className="text-sky-400" />
-      </>
-    ),
-  },
-];
-
-export function startMode(runUp: RunUp | null) {
-  return START_MODES.find((mode) => mode.runUp === runUp) ?? START_MODES[0];
-}
+/** A small picture of each way to start, by its `runUp` (`sign` for the start sign). */
+const PICTURES: Record<RunUp | 'sign', ReactNode> = {
+  sign: (
+    <>
+      <path d="M28 24v14M28 38l-4 10M28 38l4 10M25 26l-6-8 15-9M31 26l6-8-15-9" {...strokes} />
+      <circle cx="28" cy="20" r="3.5" fill="currentColor" />
+    </>
+  ),
+  left: (
+    <>
+      {zoneRect(30)}
+      <path d="M6 30h20m-6-6 6 6-6 6" {...strokes} />
+    </>
+  ),
+  right: (
+    <>
+      {zoneRect(6)}
+      <path d="M50 30H30m6-6-6 6 6 6" {...strokes} />
+    </>
+  ),
+  any: (
+    <>
+      <path d="M14 40 28 16l14 24" {...strokes} />
+      <path d="M8 30h6M8 36h4M42 30h6M44 36h4" {...strokes} className="text-sky-400" />
+    </>
+  ),
+};
 
 type Props = {
   open: boolean;
@@ -120,10 +77,7 @@ export default function StartModeSheet({ open, onOpenChange, runUp, onRunUp }: P
       <DialogContent className="top-auto bottom-0 max-h-dvh translate-y-0 gap-3 overflow-y-auto rounded-t-2xl rounded-b-none p-4 max-sm:max-w-none sm:max-w-3xl">
         <DialogHeader className="text-left">
           <DialogTitle className="text-xl">Wie soll die Aufnahme starten?</DialogTitle>
-          <DialogDescription>
-            Gilt für dieses Gerät. Der rote Knopf startet immer. Automatisch beginnt das Video 1,5–3
-            s vor dem Auslösen.
-          </DialogDescription>
+          <DialogDescription>{START_MODES_NOTE}</DialogDescription>
         </DialogHeader>
         <div role="radiogroup" aria-label="Start" className="grid gap-2 sm:grid-cols-2">
           {START_MODES.map((mode) => {
@@ -148,7 +102,7 @@ export default function StartModeSheet({ open, onOpenChange, runUp, onRunUp }: P
                   aria-hidden
                   className="size-14 shrink-0 rounded-xl bg-black text-slate-100"
                 >
-                  {mode.picture}
+                  {PICTURES[mode.runUp ?? 'sign']}
                 </svg>
                 <span className="min-w-0 flex-1">
                   <span className="block font-bold">{mode.title}</span>

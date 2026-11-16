@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Circle, CircleDot, Trash2, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { CameraDevice } from 'react-native-vision-camera';
@@ -93,7 +93,7 @@ export default function Settings({
               <Text style={styles.muted}>Gelten für dieses Gerät.</Text>
             </View>
             <Pressable accessibilityLabel="Schliessen" onPress={close} hitSlop={12}>
-              <MaterialCommunityIcons name="close" size={22} color={colors.text} />
+              <X size={22} color={colors.text} />
             </Pressable>
           </View>
 
@@ -109,11 +109,11 @@ export default function Settings({
                 onPress={() => onDevice(device.id)}
               >
                 <Text style={styles.text}>{cameraLabel(device)}</Text>
-                <MaterialCommunityIcons
-                  name={device.id === deviceId ? 'radiobox-marked' : 'radiobox-blank'}
-                  size={20}
-                  color={colors.text}
-                />
+                {device.id === deviceId ? (
+                  <CircleDot size={20} color={colors.text} />
+                ) : (
+                  <Circle size={20} color={colors.text} />
+                )}
               </Pressable>
             ))}
             {wideZoom !== undefined && (
@@ -150,11 +150,7 @@ export default function Settings({
                 onDeleteAll();
               }}
             >
-              <MaterialCommunityIcons
-                name="trash-can-outline"
-                size={18}
-                color={confirmingDelete ? colors.text : colors.red}
-              />
+              <Trash2 size={18} color={confirmingDelete ? colors.text : colors.red} />
               <Text style={[shared.buttonText, !confirmingDelete && { color: colors.red }]}>
                 {confirmingDelete
                   ? `Wirklich alle ${clipCount} löschen?`

@@ -8,6 +8,7 @@ import {
   type SessionState,
 } from '@nomol/core/detection/session';
 import { detectionAreas, isInZone, type Zone } from '@nomol/core/detection/zone';
+import { screenLayout, type Layout } from '@nomol/core/layout';
 import type { Clip } from '@nomol/core/recording/clip';
 import { learnFloor, type FloorHint } from '@nomol/core/recording/floor-line';
 import type { Seen } from '@nomol/core/recording/preroll';
@@ -15,6 +16,7 @@ import { createClipRecorder, createStartSound } from '@nomol/native-modules';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { callback } from 'react-native-nitro-modules';
 import {
   NativePreviewView,
@@ -54,7 +56,6 @@ import FloorLineNote from './FloorLineNote';
 import LiveControls, { type Status } from './LiveControls';
 import PersonBox from './PersonBox';
 import Settings from './Settings';
-import StartHint from './StartHint';
 import StartSign from './StartSign';
 import { colors, type Frame } from './theme';
 import ZoneEditor from './ZoneEditor';
@@ -71,8 +72,24 @@ const SCREEN_ORIENTATION_LOCKED = 14;
 /** Phones narrower than this get smaller thumbnails and live picture. */
 const WIDE_SCREEN = 640;
 
+/** Narrowest strip beside the picture that holds the zone editor's bar. */
+const ZONE_STRIP_MIN = 176;
+
 /** Who gets a box: people in the start zone while waiting, the gymnast while recording. */
 type Boxes = { poses: Pose[]; recording: boolean };
+
+/** `layout` moved by `dx`, `dy`: laid out in the safe area, which starts there. */
+function moveLayout(layout: Layout, dx: number, dy: number): Layout {
+  function move(rect: Frame): Frame {
+    return { ...rect, left: rect.left + dx, top: rect.top + dy };
+  }
+  return {
+    dock: layout.dock,
+    picture: move(layout.picture),
+    strip: layout.strip && move(layout.strip),
+    recordStrip: layout.recordStrip && move(layout.recordStrip),
+  };
+}
 
 /** Where a picture of the given aspect ratio (width / height) fits, centred, on the screen. */
 function fit(screen: { width: number; height: number }, aspectRatio: number): Frame {
@@ -129,6 +146,14 @@ export default function Tablet() {
   const floorHintsRef = useRef<FloorHint[][]>([]);
   /** The zones before the floor line last moved by itself, while that can be undone. */
   const [floorUndo, setFloorUndo] = useState<Zone[] | null>(null);
+  /**
+   * Below the picture the strip is as high as what's in it: the controls, or the zone editor's
+   * bar while drawing. Measured (0 until then); kept while the controls float, so they don't
+   * dock where they wouldn't fit.
+   */
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const [zoneBarHeight, setZoneBarHeight] = useState(0);
+  const insets = useSafeAreaInsets();
 
   const found =
     devices.find((d) => d.id === cameraId) ??
@@ -192,9 +217,30 @@ export default function Tablet() {
     { width: liveWidth, height: liveWidth / aspectRatio },
     showLive,
   );
+  // The app draws under the camera hole; picture and strips are laid out beside it.
+  const layout = moveLayout(
+    screenLayout(
+      screen.width - insets.left - insets.right,
+      screen.height - insets.top - insets.bottom,
+      aspectRatio,
+      (editingZone ? zoneBarHeight : controlsHeight) || undefined,
+    ),
+    insets.left,
+    insets.top,
+  );
+  // The replay fills the screen with its controls over it, so nothing is docked meanwhile.
+  const dock = showReplay ? null : layout.dock;
+  // Its text and buttons need some width: left of a 16:9 picture the strip is too narrow, and
+  // the zone editor's bar goes over the picture as without a strip.
+  const zoneDock: Frame | null =
+    dock === 'bottom' && layout.strip
+      ? { ...layout.strip, height: screen.height - insets.bottom - layout.strip.top }
+      : dock === 'side' && layout.strip && layout.strip.width >= ZONE_STRIP_MIN
+        ? layout.strip
+        : null;
   const picture: Frame = showReplay
     ? { ...livePicture.position, width: liveWidth, height: liveWidth / aspectRatio }
-    : fit(screen, aspectRatio);
+    : layout.picture;
 
   // The picture turns with the screen; turned mid-recording, the detected poses would no longer
   // match the video, whose orientation is fixed when it begins.
@@ -479,6 +525,9 @@ export default function Tablet() {
         <ZoneEditor
           picture={picture}
           zones={zones}
+          dock={zoneDock}
+          side={dock === 'side'}
+          onBarHeight={setZoneBarHeight}
           onCancel={() => setEditingZone(false)}
           onSave={(next) => {
             saveZones(next);
@@ -489,33 +538,40 @@ export default function Tablet() {
           }}
         />
       ) : (
-        <>
-          <LiveControls
-            status={detection.ready ? status : 'loading'}
-            runUp={runUp}
-            onRunUp={(next) => {
-              saveRunUp(next);
-              setRunUp(next);
-            }}
-            onEditZone={() => {
-              // Detection pauses (see above); a half-held sign shouldn't count afterwards.
-              sessionRef.current = initialSession;
-              setArmedAt(null);
-              setStatus('idle');
-              setBoxes({ poses: [], recording: false });
-              showLive();
-              setEditingZone(true);
-            }}
-            onSettings={() => setSettingsOpen(true)}
-            armed={armedAt !== null}
-            onArm={(armed) => setArmedAt(armed ? Date.now() : null)}
-            onStop={stopByHand}
-          />
-          {!showReplay && status === 'idle' && (
-            <StartHint runUp={runUp} aboveClips={clips.length > 0} />
-          )}
-          {!showReplay && clips.length > 0 && <View style={styles.strip}>{clipStrip}</View>}
-        </>
+        <LiveControls
+          dock={dock}
+          strip={layout.strip}
+          recordStrip={layout.recordStrip}
+          onStripHeight={setControlsHeight}
+          screenWidth={screen.width}
+          editingZone={editingZone}
+          replay={showReplay}
+          clips={clips}
+          onClips={() => {
+            setCurrentId(clips[0].id);
+            setView('replay');
+            setNextId(null);
+          }}
+          status={detection.ready ? status : 'loading'}
+          runUp={runUp}
+          onRunUp={(next) => {
+            saveRunUp(next);
+            setRunUp(next);
+          }}
+          onEditZone={() => {
+            // Detection pauses (see above); a half-held sign shouldn't count afterwards.
+            sessionRef.current = initialSession;
+            setArmedAt(null);
+            setStatus('idle');
+            setBoxes({ poses: [], recording: false });
+            showLive();
+            setEditingZone(true);
+          }}
+          onSettings={() => setSettingsOpen(true)}
+          armed={armedAt !== null}
+          onArm={(armed) => setArmedAt(armed ? Date.now() : null)}
+          onStop={stopByHand}
+        />
       )}
 
       {floorUndo && !editingZone && (
@@ -607,7 +663,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  strip: { position: 'absolute', left: 16, right: 16, bottom: 16 },
   error: {
     position: 'absolute',
     left: 12,

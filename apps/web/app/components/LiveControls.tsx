@@ -2,7 +2,8 @@ import { ChevronDown, Circle, Settings, Square, SquareDashed, X } from 'lucide-r
 import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '~/components/ui/button';
-import StartModeSheet, { startMode } from '~/components/StartModeSheet';
+import StartModeSheet from '~/components/StartModeSheet';
+import { startMode } from '@nomol/core/start-modes';
 import type { RunUp } from '@nomol/core/detection/session';
 import type { Dock } from '@nomol/core/layout';
 import type { Clip } from '@nomol/core/recording/clip';

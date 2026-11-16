@@ -3,6 +3,7 @@ import { NavigationBar } from 'expo-navigation-bar';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useCameraPermission } from 'react-native-vision-camera';
 import Tablet from './components/Tablet';
 import { colors, styles as shared } from './components/theme';
@@ -50,7 +51,8 @@ export default function App() {
   }, [canRequestPermission, requestPermission]);
 
   return (
-    <View style={styles.root}>
+    // For the camera hole's insets: the app draws under it.
+    <SafeAreaProvider style={styles.root}>
       <StatusBar hidden />
       <NavigationBar hidden />
       {!isNewest ? null : permission.hasPermission ? (
@@ -76,7 +78,7 @@ export default function App() {
           </Pressable>
         </View>
       )}
-    </View>
+    </SafeAreaProvider>
   );
 }
 

@@ -12,6 +12,12 @@ export const colors = {
   zoneLabel: 'rgba(60, 211, 176, 0.95)',
   destructive: '#dc2626',
   panel: 'rgba(15, 23, 42, 0.92)',
+  /** Behind the docked controls and the start sheet (zinc-950). */
+  sheet: '#09090b',
+  border: 'rgba(255, 255, 255, 0.1)',
+  /** The zones in the start sheet's pictures (sky-400). */
+  zoneBlue: '#38bdf8',
+  floor: '#fcd34d',
 };
 
 /** One rectangle in screen points: where the camera picture sits on the screen. */
