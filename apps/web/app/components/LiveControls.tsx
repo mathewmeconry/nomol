@@ -45,7 +45,7 @@ type Props = {
   /** Newest first. */
   clips: Clip[];
   onClips: () => void;
-  /** Docked: the replay controls or the zone editor's bar, in the strip's scrolling part. */
+  /** Docked: the zone editor's bar, in the strip's scrolling part. */
   children?: ReactNode;
 };
 
@@ -218,15 +218,11 @@ export default function LiveControls({
             {statusLine}
             {/* Below the picture the strip may be only 200 px high: one row for both. */}
             {live && dock === 'bottom' && modeButton}
-            {replay && smallRecord}
             {settings}
           </div>
         )}
         {/* Scrolls if the strip is too short; status and record row stay put. */}
-        <div
-          data-scroll-area
-          className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain"
-        >
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
           {live && dock === 'side' && modeButton}
           {live && hint}
           {dock === 'bottom' ? (

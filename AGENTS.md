@@ -55,8 +55,8 @@ Requirements, as agreed with the owner:
 - **Replay:** the finished clip opens immediately and loops while detection keeps running for the
   next gymnast. While a replay is on screen, a newer clip waits until it has been shown 60 s
   (whatever its length), plays, and nobody touched the screen for 10 s (Android so far). The
-  small live picture sits among the controls when they're docked (see Screen space), otherwise
-  over the replay where it can be dragged anywhere; a tap on it goes live. A tap on the replay
+  replay fills the screen with its controls over it (they fade during playback) and the small
+  live picture over it, where it can be dragged anywhere; a tap on it goes live. A tap on the replay
   shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet) incl. head; left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
@@ -73,8 +73,8 @@ Requirements, as agreed with the owner:
   camera app (status and settings on top; the start mode as a button that opens a sheet of the
   four ways to start, each with a picture, a sentence and the apparatus it suits, with that
   sentence shown below it; lowest, within thumb reach, the newest clip, a large round record
-  button and the start zone). While a clip is on screen the replay controls take their place
-  and only the status and a small record button stay. The web camera is asked for 4:3 (like the
+  button and the start zone). The replay isn't docked (see Replay); over it only the status, a
+  small record button and the settings stay. The web camera is asked for 4:3 (like the
   sensor and the Android app): with 16:9 a Pixel 8 had only 183 px left for the strip. The
   start zone editor says where the bottom edge goes and marks it on the picture. The web app's
   `screenLayout` (`packages/core/src/layout.ts`) decides from the measured screen and picture
@@ -326,9 +326,8 @@ shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` 
   to `pose.worker.ts`.
 - `components/Tablet.tsx`: the screen. Runs the camera → detection → session loop, starts
   and finishes recordings, switches between live picture and replay, and lays out the picture
-  and the docked strip (`screenLayout`). The replay controls and the zone editor's bar are
-  portalled into the strip; the live video element is never remounted, so docked over the
-  replay it is laid over its slot among the controls (`use-screen-box`).
+  and the docked strip (`screenLayout`). The zone editor's bar is portalled into the strip;
+  the live video element is never remounted, only moved and shrunk over the replay.
 - `components/LiveControls.tsx`, `StartModeSheet.tsx`, `Settings.tsx`, `LoadingScreen.tsx`:
   the live controls (over the picture or docked), the start mode sheet, the settings dialog,
   the loading/error screen.
@@ -336,7 +335,7 @@ shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` 
   zone drawing.
 - `hooks/`: `use-clips` (clip list, storage, background skeleton), `use-pose-detector`
   (MediaPipe loading), `use-tap-effects` (fullscreen and sound need a tap), camera hooks,
-  `use-element-size` and `use-screen-box` for the docked layout.
+  `use-element-size` for the docked layout.
 - `lib/recording/`: recorder, pre-roll, storage, export. `capture.client.ts` gathers poses,
   skeleton frames and stills while recording and turns them into a clip.
 - `lib/skeleton/`: replay skeleton. `skeleton.worker.ts` MediaPipe on the turned views,

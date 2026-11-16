@@ -10,7 +10,6 @@ import useCameras from '~/hooks/use-cameras';
 import useClips from '~/hooks/use-clips';
 import useDragSpot from '~/hooks/use-drag-spot';
 import useElementSize from '~/hooks/use-element-size';
-import useScreenBox from '~/hooks/use-screen-box';
 import usePoseDetector from '~/hooks/use-pose-detector';
 import useTapEffects from '~/hooks/use-tap-effects';
 import useWakeLock from '~/hooks/use-wake-lock';
@@ -104,21 +103,15 @@ export default function Tablet() {
   const livePictureRef = useRef<HTMLDivElement>(null);
   const livePicture = useDragSpot();
   const [screen, observeScreen] = useElementSize();
-  /** In the strip, where the replay controls or the zone editor's bar go. */
+  /** In the strip, where the zone editor's bar goes. */
   const [stripSlot, setStripSlot] = useState<HTMLDivElement | null>(null);
-  /** Among the docked replay controls, where the small live picture is laid over. */
-  const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
-  const liveSlotBox = useScreenBox(liveSlot);
 
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
   const recording = status === 'recording';
-  const layout = screenLayout(
-    screen.width,
-    screen.height,
-    showReplay ? current.aspectRatio : aspectRatio,
-  );
-  const { dock } = layout;
+  const layout = screenLayout(screen.width, screen.height, aspectRatio);
+  // The replay fills the screen with its controls over it, so nothing is docked meanwhile.
+  const dock = showReplay ? null : layout.dock;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -350,7 +343,7 @@ export default function Tablet() {
   );
 
   // A `contents` box: what's portalled into it takes part in the strip's own layout.
-  const slot = (showReplay || editingZone) && <div ref={setStripSlot} className="contents" />;
+  const slot = editingZone && <div ref={setStripSlot} className="contents" />;
 
   const bar = (
     <LiveControls
@@ -397,16 +390,6 @@ export default function Tablet() {
         <ClipPlayer
           key={current.id}
           clip={current}
-          picture={layout.picture}
-          dock={dock}
-          dockElement={stripSlot}
-          liveSlot={
-            <div
-              ref={setLiveSlot}
-              className="shrink-0 self-start"
-              style={{ aspectRatio, width: `min(6rem, ${5 * aspectRatio}rem)` }}
-            />
-          }
           clipStrip={clipStrip}
           skeletonProgress={skeletonProgress[current.id] ?? null}
           onLive={() => setView('live')}
@@ -420,42 +403,21 @@ export default function Tablet() {
 
       {/*
         One video element throughout, only moved: the camera stream and the detection loop are
-        attached to it. Docked over the replay it lies on its slot among the replay controls.
+        attached to it. Over the replay it's small and can be dragged anywhere.
       */}
       <div
         ref={livePictureRef}
         className={cn(
           'absolute',
-          showReplay && 'z-10 overflow-hidden rounded-lg',
-          // Docked it must match its slot exactly, so the frame is drawn outside it.
-          showReplay && dock && 'ring-2 ring-white/25',
-          showReplay && !dock && 'w-1/3 border-2 border-white/25 shadow-2xl sm:w-1/4',
-          showReplay && !dock && !livePicture.style && 'top-24 right-3 sm:top-16',
-          showReplay && dock && !liveSlotBox && 'invisible',
+          showReplay &&
+            'z-10 w-1/3 overflow-hidden rounded-lg border-2 border-white/25 shadow-2xl sm:w-1/4',
+          showReplay && !livePicture.style && 'top-24 right-3 sm:top-16',
         )}
-        style={
-          !showReplay
-            ? layout.picture
-            : dock
-              ? liveSlotBox
-                ? {
-                    left: liveSlotBox.left,
-                    top: liveSlotBox.top,
-                    width: liveSlotBox.width,
-                    height: liveSlotBox.height,
-                    // Scrolled out of the strip with its slot, rather than lying over the bar.
-                    // 2 px more for the ring around it.
-                    clipPath: `inset(${liveSlotBox.hiddenTop - 2}px -2px ${liveSlotBox.hiddenBottom - 2}px -2px)`,
-                  }
-                : undefined
-              : livePicture.style
-        }
+        style={showReplay ? livePicture.style : layout.picture}
       >
         <div
           className="relative"
-          style={
-            showReplay && !dock ? { aspectRatio, width: '100%' } : { width: '100%', height: '100%' }
-          }
+          style={showReplay ? { aspectRatio, width: '100%' } : { width: '100%', height: '100%' }}
         >
           <video
             ref={videoRef}
@@ -482,24 +444,17 @@ export default function Tablet() {
           {showReplay && (
             <button
               type="button"
-              aria-label={
-                dock
-                  ? 'Live-Bild gross anzeigen'
-                  : 'Live-Bild gross anzeigen, zum Verschieben ziehen'
-              }
-              onPointerDown={(event) => {
-                if (!dock) livePicture.onPointerDown(event, livePictureRef.current);
-              }}
+              aria-label="Live-Bild gross anzeigen, zum Verschieben ziehen"
+              onPointerDown={(event) => livePicture.onPointerDown(event, livePictureRef.current)}
               onPointerMove={livePicture.onPointerMove}
               onClick={() => {
-                if (dock || !livePicture.wasDragged()) setView('live');
+                if (!livePicture.wasDragged()) setView('live');
               }}
-              className={cn('absolute inset-0', dock ? 'cursor-pointer' : 'cursor-move touch-none')}
+              className="absolute inset-0 cursor-move touch-none"
             >
               <span
                 className={cn(
-                  'absolute rounded bg-black/70 font-semibold',
-                  dock ? 'top-1 left-1 px-1 text-[10px]' : 'top-2 left-2 px-2 py-0.5 text-xs',
+                  'absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs font-semibold',
                   recording ? 'text-red-300' : 'text-emerald-300',
                 )}
               >
@@ -514,7 +469,7 @@ export default function Tablet() {
         Docked: the strip beside or below the picture. Its width decides whether rows join into
         lines (`@container`).
       */}
-      {layout.strip ? (
+      {dock && layout.strip ? (
         <div
           className={cn(
             '@container absolute flex flex-col gap-2 bg-zinc-950',
