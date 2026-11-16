@@ -88,11 +88,13 @@ Requirements, as agreed with the owner:
   strip, or over the picture where the strip is narrower than 176 px. The web app's
   `screenLayout` (`packages/core/src/layout.ts`) decides from the measured screen and picture
   shape: the strips beside need 96 px (left) and 88 px (right), split evenly when wider, a
-  bottom strip 200 px, and the picture may shrink by up to
-  10 % for it (phones in landscape need ~3 %, an upright camera in portrait ~7 %). Otherwise (a
-  16:9 desktop window, a 4:3 tablet with a 4:3 picture) the controls float over the picture as
-  before and fade during playback. A strip below the picture is only as high as its controls
-  (measured), and picture and strip are centred together on the screen; in landscape the
+  bottom strip its controls' measured height (~210 px; 200 until measured), and the picture
+  may shrink by up to 25 % for it rather than be covered: the Pixel 8 has no 4:3 at 60 fps, so
+  held upright with Chrome's bars showing (485 × 891 CSS px) its 16:9 picture shrinks by ~22 %;
+  phones in landscape need ~0–3 %. Only beyond that do the controls float over the picture and
+  fade during playback. A strip below the picture is only as high as its controls (measured;
+  the start sentence keeps its space while hidden, so the picture doesn't jump when a recording
+  starts), and picture and strip are centred together on the screen; in landscape the
   picture is limited by the height, so the controls beside it take no room from it and a strip
   below would shrink it by a third. In a short strip the status and record row stay put and the
   rest scrolls. Every tap enters fullscreen (not on iPhone); installed to the home screen it starts fullscreen.

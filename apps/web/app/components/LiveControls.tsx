@@ -152,8 +152,16 @@ export default function LiveControls({
       <ChevronDown />
     </Button>
   );
-  const hint = status === 'idle' && (
-    <p className={cn('text-sm leading-snug text-slate-300', !dock && 'max-w-sm text-center')}>
+  // Docked it keeps its space when hidden: the strip's height sets the picture's size, which
+  // shouldn't jump when a recording starts.
+  const hint = (status === 'idle' || dock) && (
+    <p
+      className={cn(
+        'text-sm leading-snug text-slate-300',
+        !dock && 'max-w-sm text-center',
+        status !== 'idle' && 'invisible',
+      )}
+    >
       {mode.description}
     </p>
   );
@@ -265,7 +273,7 @@ export default function LiveControls({
         {/* Scrolls if the strip is too short; status and record row stay put. */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
           {live && hint}
-          <div className="mt-auto flex flex-wrap items-center gap-2">{children}</div>
+          {children && <div className="mt-auto flex flex-wrap items-center gap-2">{children}</div>}
         </div>
         {live && recordRow}
         {sheet}

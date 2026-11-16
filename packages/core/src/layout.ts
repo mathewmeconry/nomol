@@ -18,13 +18,14 @@ const MIN_LEFT = 96;
 /** Narrowest strip right of the picture: the record button with its label. */
 const MIN_RIGHT = 88;
 const MIN_SIDE = MIN_LEFT + MIN_RIGHT;
-/** Lowest strip below the picture that holds the bar, the start hint and the clips. */
+/** Lowest strip below the picture that holds the controls, until they're measured. */
 const MIN_BOTTOM = 200;
 /**
- * How far the picture may shrink to make room for a strip. Phones in landscape need ~3 %, and
- * with the camera upright in portrait ~7 %; a 16:9 desktop window would need 12 % and floats.
+ * How far the picture may shrink to make room for a strip, rather than the controls covering
+ * it. A Pixel 8 held upright with a 16:9 picture (no 4:3 at 60 fps) and Chrome's bars showing
+ * needs 22 %; phones in landscape need ~0–3 %.
  */
-const MIN_SCALE = 0.9;
+const MIN_SCALE = 0.75;
 
 /**
  * Where the picture (shown whole) and the controls go on a `width` × `height` screen. In
@@ -37,12 +38,12 @@ export function screenLayout(
   width: number,
   height: number,
   aspectRatio: number,
-  stripContent = Infinity,
+  stripContent?: number,
 ): Layout {
   // The picture as large as it fits, as when the controls float over it.
   const fullHeight = Math.min(height, width / aspectRatio);
   const sideHeight = Math.min(height, (width - MIN_SIDE) / aspectRatio);
-  const bottomHeight = Math.min(width / aspectRatio, height - MIN_BOTTOM);
+  const bottomHeight = Math.min(width / aspectRatio, height - (stripContent ?? MIN_BOTTOM));
   const best = Math.max(sideHeight, bottomHeight);
 
   if (best < fullHeight * MIN_SCALE) {
@@ -78,7 +79,7 @@ export function screenLayout(
       recordStrip: { left: left + pictureWidth, top: 0, width: free - left, height },
     };
   }
-  const stripHeight = Math.min(height - pictureHeight, Math.ceil(stripContent));
+  const stripHeight = Math.min(height - pictureHeight, Math.ceil(stripContent ?? Infinity));
   const top = Math.round((height - pictureHeight - stripHeight) / 2);
   return {
     dock: 'bottom',

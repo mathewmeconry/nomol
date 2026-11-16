@@ -44,13 +44,6 @@ describe('screenLayout', () => {
       strip: { left: 0, top: 507, width: 412, height: 211 },
       recordStrip: null,
     });
-    // More than there's room for: the strip takes what's left and scrolls.
-    expect(screenLayout(412, 915, 4 / 3, 2000).strip).toEqual({
-      left: 0,
-      top: 309,
-      width: 412,
-      height: 606,
-    });
   });
 
   it('docks below an upright camera picture on a phone held upright', () => {
@@ -60,20 +53,26 @@ describe('screenLayout', () => {
     expect(strip?.height).toBe(200);
   });
 
-  it('lets the controls float when the picture nearly fills the screen', () => {
-    // A 4:3 tablet with a 4:3 picture, and a desktop window close to 16:9.
-    for (const [width, height, aspectRatio] of [
-      [1024, 768, 4 / 3],
-      [1440, 900, WIDE],
-    ]) {
-      const { dock, picture, strip } = screenLayout(width, height, aspectRatio);
-      expect(dock).toBeNull();
-      expect(strip).toBeNull();
-      expect(picture.width / picture.height).toBeCloseTo(aspectRatio, 2);
-      // Shown whole and centred.
-      expect(picture.left * 2 + picture.width).toBeCloseTo(width, -1);
-      expect(picture.top * 2 + picture.height).toBeCloseTo(height, -1);
-    }
+  it('shrinks an upright 16:9 picture by a fifth for the controls measured below it', () => {
+    // A Pixel 8 held upright, Chrome's bars showing: the camera has no 4:3 at 60 fps.
+    const { dock, picture, strip } = screenLayout(485, 891, UPRIGHT, 217);
+    expect(dock).toBe('bottom');
+    expect(picture).toEqual({ left: 53, top: 0, width: 379, height: 674 });
+    expect(strip).toEqual({ left: 0, top: 674, width: 485, height: 217 });
+  });
+
+  it('docks a 4:3 tablet with a 4:3 picture beside it', () => {
+    expect(screenLayout(1024, 768, 4 / 3).dock).toBe('side');
+  });
+
+  it('lets the controls float when the picture would shrink by more than a quarter', () => {
+    const { dock, picture, strip } = screenLayout(412, 700, UPRIGHT, 217);
+    expect(dock).toBeNull();
+    expect(strip).toBeNull();
+    expect(picture.width / picture.height).toBeCloseTo(UPRIGHT, 2);
+    // Shown whole and centred.
+    expect(picture.left * 2 + picture.width).toBeCloseTo(412, -1);
+    expect(picture.height).toBe(700);
   });
 
   it('picks the side that keeps the picture larger', () => {

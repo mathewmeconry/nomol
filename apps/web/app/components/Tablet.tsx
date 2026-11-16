@@ -112,8 +112,11 @@ export default function Tablet() {
   const livePictureRef = useRef<HTMLDivElement>(null);
   const livePicture = useDragSpot();
   const [screen, observeScreen] = useElementSize();
-  /** Below the picture the strip is as high as its controls; this measures them. */
-  const [strip, observeStrip] = useElementSize();
+  /**
+   * Below the picture the strip is as high as its controls; this measures them (0 until then).
+   * Kept while the controls float, so they don't dock where they wouldn't fit.
+   */
+  const [strip, observeStrip] = useElementSize({ width: 0, height: 0 });
   /** In the strip, where the zone editor's bar goes. */
   const [stripSlot, setStripSlot] = useState<HTMLDivElement | null>(null);
   /** Right of the picture in landscape, where the record button and its row go. */
@@ -122,7 +125,7 @@ export default function Tablet() {
   const current = clips.find((clip) => clip.id === currentId) ?? null;
   const showReplay = view === 'replay' && current !== null && !editingZone;
   const recording = status === 'recording';
-  const layout = screenLayout(screen.width, screen.height, aspectRatio, strip.height);
+  const layout = screenLayout(screen.width, screen.height, aspectRatio, strip.height || undefined);
   // The replay fills the screen with its controls over it, so nothing is docked meanwhile.
   const dock = showReplay ? null : layout.dock;
 
@@ -511,7 +514,8 @@ export default function Tablet() {
       )}
       {dock && layout.strip ? (
         <div
-          ref={observeStrip}
+          // Only below the picture: beside it the strip is as high as the screen.
+          ref={dock === 'bottom' ? observeStrip : undefined}
           className={cn(
             '@container absolute flex flex-col gap-2 bg-zinc-950',
             dock === 'side' ? 'border-r border-white/10 p-2' : 'border-t border-white/10 p-3',
