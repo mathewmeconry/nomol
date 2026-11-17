@@ -38,10 +38,16 @@ jobs:
       # The same toolchain as the build machine; with-android-toolchain.js pins every module to it.
       # CMake and Ninja from apt, since the plugin points Gradle at /usr.
       - name: Install Android SDK packages and CMake
+        # The runner's sdkmanager can be too old to know the newest platform, so update it first.
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-37" "build-tools;37.0.0" "ndk;30.0.16248370"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "cmdline-tools;latest"
+          sdkmanager="$(ls -d "$ANDROID_HOME"/cmdline-tools/latest-*/bin 2>/dev/null | tail -1)/sdkmanager"
+          [ -x "$sdkmanager" ] || sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --list | grep -E 'platforms;android-3[6-9]|build-tools;3[7-9]|ndk;30' || true
+          "$sdkmanager" "platforms;android-37" "build-tools;37.0.0" "ndk;30.0.16248370"
           sudo apt-get update -q && sudo apt-get install -y -q cmake ninja-build
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
