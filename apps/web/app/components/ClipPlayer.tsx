@@ -391,7 +391,11 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         />
-        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        {/* Faded as one layer, so outline, lines and dots don't stack into darker spots. */}
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-50"
+        />
       </div>
 
       {overlay}

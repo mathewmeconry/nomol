@@ -44,7 +44,12 @@ export default function SkeletonOverlay({
       [{ x: a.x * width, y: a.y * height }, { x: b.x * width, y: b.y * height }, color] as const,
   );
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    // Faded as one layer (offscreen), so outline, lines and dots don't stack into darker spots.
+    <View
+      pointerEvents="none"
+      needsOffscreenAlphaCompositing
+      style={[StyleSheet.absoluteFill, styles.faded]}
+    >
       {lines.map(([a, b], i) => (
         <Line key={`o${i}`} a={a} b={b} width={OUTLINE} color="rgba(0, 0, 0, 0.55)" />
       ))}
@@ -67,5 +72,6 @@ export default function SkeletonOverlay({
 }
 
 const styles = StyleSheet.create({
+  faded: { opacity: 0.5 },
   dot: { position: 'absolute', width: DOT, height: DOT, borderRadius: DOT / 2 },
 });
