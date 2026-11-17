@@ -1,0 +1,54 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/native/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/android.yml
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+      # The same toolchain as the build machine; with-android-toolchain.js pins every module to it.
+      # CMake and Ninja from apt, since the plugin points Gradle at /usr.
+      - name: Install Android SDK packages and CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-37" "build-tools;37.0.0" "ndk;30.0.16248370"
+          sudo apt-get update -q && sudo apt-get install -y -q cmake ninja-build
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build APK
+        run: pnpm android:build
+      - uses: actions/upload-artifact@v5
+        with:
+          name: nomol-${{ github.sha }}
+          path: apps/native/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

@@ -531,6 +531,9 @@ Keep such files and scripts outside the repo. Check layouts at phone sizes (e.g.
   `/usr/lib/jvm/java-21-openjdk` and `ANDROID_HOME` to `/opt/android-sdk`. Use Node 24
   (`nvm use`); the shell's default Node may be older. After changing `app.config.ts` or native
   dependencies, `pnpm --filter @nomol/native prebuild --clean` regenerates `android/`.
+- GitHub Actions (`.github/workflows/android.yml`) builds the same APK on every push to `main`
+  that touches the native app or `packages/` (or by hand) and keeps it as the run's artifact.
+  It installs the same SDK packages, NDK and CMake as the build machine.
 - The owner's test phone is a Pixel 8 over USB (`adb devices`: `37250DLJH000KS`).
   `pnpm android:install` installs the APK; then
   `adb shell pm grant ch.nomol.app android.permission.CAMERA`,
