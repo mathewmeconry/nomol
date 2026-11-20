@@ -9,7 +9,7 @@ import {
 import { cn } from 'cn';
 import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { Skeleton } from './Skeleton';
-import { KEYPOINT_NAMES, fromCandidate, swapSides } from './lib/keypoints';
+import { KEYPOINT_NAMES, LABELLED, fromCandidate, nextLabelled, swapSides } from './lib/keypoints';
 import type { Keypoint, Label, Task } from './lib/tasks';
 
 type Props = {
@@ -30,17 +30,7 @@ type Drag =
 const VISIBILITY = ['nicht im Bild', 'verdeckt', 'sichtbar'];
 /** The legend: each colour with its points, which can be picked by name. */
 const LEGEND: [string, string, [number, string][]][] = [
-  [
-    LIMB_COLORS.body,
-    'Kopf',
-    [
-      [0, 'Nase'],
-      [1, 'Auge l.'],
-      [2, 'Auge r.'],
-      [3, 'Ohr l.'],
-      [4, 'Ohr r.'],
-    ],
-  ],
+  [LIMB_COLORS.body, 'Kopf', [[0, 'Nase (Gesichtsmitte)']]],
   [
     LIMB_COLORS.leftArm,
     'linker Arm',
@@ -184,8 +174,7 @@ export function Editor({
       else if (key === 's') change(swapSides(keypoints));
       else if (key === 'tab') {
         event.preventDefault();
-        const step = event.shiftKey ? 16 : 1;
-        setSelected((s) => (s === null ? (event.shiftKey ? 16 : 0) : (s + step) % 17));
+        setSelected((s) => nextLabelled(s, event.shiftKey ? -1 : 1));
       } else if (key === 'h') {
         // While points are set one by one the selection has moved on to the next missing one.
         const waiting = selected === null || keypoints[selected][2] === 0;
@@ -267,8 +256,8 @@ export function Editor({
       // Placing a missing point moves on to the next missing one, so a cleared skeleton is
       // clicked in point by point.
       if (!placed) {
-        const missing = next.findIndex(([, , v], i) => v === 0 && i > selected);
-        setSelected(missing === -1 ? null : missing);
+        const missing = LABELLED.find((i) => i > selected && next[i][2] === 0);
+        setSelected(missing ?? null);
         setLastPlaced(selected);
       }
     }

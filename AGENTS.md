@@ -63,7 +63,8 @@ Requirements, as agreed with the owner:
   (whatever its length), plays, and nobody touched the screen for 10 s (Android so far). The
   replay fills the screen with its controls over it (they fade during playback) and the small
   live picture over it, where it can be dragged anywhere; a tap on it goes live. A tap on the replay
-  shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet) incl. head; left side
+  shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet), the head as a line from
+  between the shoulders to the nose (no face details); left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off) and the camera's light blinks
   for 0.5 s (where it has one: not front cameras, not on iPhone). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
@@ -531,7 +532,9 @@ exported before it finished. Version 1 had no `skeleton`, version 2 no `appVersi
 ## Labelling training data
 
 The replay skeleton is barely usable yet. To measure it and to fine-tune a pose model (e.g.
-RTMPose) on gymnastics, frames are labelled by hand with `apps/annotate` (COCO's 17 keypoints).
+RTMPose) on gymnastics, frames are labelled by hand with `apps/annotate` (COCO's 17 keypoints, of
+which the nose stands for the head; eyes and ears aren't labelled and are exported as such, so
+training keeps the model's own idea of faces).
 It only runs locally and is never deployed: the frames show people, so the work folder
 (`ANNOTATE_DIR`, default `~/nomol-annotate`) lives outside the repo.
 
@@ -560,7 +563,8 @@ It only runs locally and is never deployed: the frames show people, so the work 
   points are dragged, or selected (Tab) and placed with a click. Hidden points (H) are COCO's
   visibility 1, points not in the picture (Del) 0. "COCO exportieren" writes `coco_test.json` and
   `coco_train.json` with the labelled person per frame (fine for top-down models trained on
-  person crops; others in the picture are not labelled).
+  person crops; others in the picture are not labelled). Each box is the detector's, grown to
+  every labelled point: a detector's box can stop short of stretched legs.
 
 ## Testing in a browser
 

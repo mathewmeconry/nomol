@@ -1,5 +1,6 @@
 import type { PointerEvent } from 'react';
-import { BONES, KEYPOINT_NAMES, keypointColor } from './lib/keypoints';
+import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
+import { BONES, KEYPOINT_NAMES, LABELLED, keypointColor } from './lib/keypoints';
 import type { Keypoint } from './lib/tasks';
 
 type Props = {
@@ -10,10 +11,28 @@ type Props = {
   onGrab?: (index: number, event: PointerEvent) => void;
 };
 
-/** The skeleton in image coordinates; hidden points dashed, points not in the picture left out. */
+/**
+ * The skeleton in image coordinates, the head as a line from between the shoulders to the nose
+ * (as in the app); hidden points dashed, points not in the picture left out.
+ */
 export function Skeleton({ keypoints, unit, selected = null, onGrab }: Props) {
+  const [nose, left, right] = [keypoints[0], keypoints[5], keypoints[6]];
+  const neck =
+    nose[2] && left[2] && right[2] ? [(left[0] + right[0]) / 2, (left[1] + right[1]) / 2] : null;
   return (
     <g>
+      {neck && (
+        <line
+          x1={neck[0]}
+          y1={neck[1]}
+          x2={nose[0]}
+          y2={nose[1]}
+          stroke={LIMB_COLORS.body}
+          strokeWidth={3 * unit}
+          strokeOpacity={0.8}
+          strokeDasharray={nose[2] === 1 ? `${6 * unit} ${4 * unit}` : undefined}
+        />
+      )}
       {BONES.map(([a, b, color]) => {
         const [ax, ay, av] = keypoints[a];
         const [bx, by, bv] = keypoints[b];
@@ -33,7 +52,7 @@ export function Skeleton({ keypoints, unit, selected = null, onGrab }: Props) {
         );
       })}
       {keypoints.map(([x, y, v], i) =>
-        v === 0 ? null : (
+        v === 0 || !LABELLED.includes(i) ? null : (
           <circle
             key={i}
             cx={x}

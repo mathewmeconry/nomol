@@ -132,10 +132,25 @@ describe('toCoco', () => {
     const coco = toCoco(tasks, labels, 'test');
     expect(coco.images).toEqual([{ id: 1, file_name: 'frames/a.jpg', width: 100, height: 80 }]);
     const [annotation] = coco.annotations;
-    expect(annotation.bbox).toEqual([10, 20, 30, 40]);
-    expect(annotation.area).toBe(1200);
-    expect(annotation.num_keypoints).toBe(16);
     expect(annotation.keypoints.slice(-6)).toEqual([5, 5, 1, 0, 0, 0]);
     expect(coco.categories[0].skeleton[0]).toEqual([6, 7]);
+  });
+
+  it('leaves eyes and ears out, the nose standing for the head', () => {
+    const coco = toCoco([task('a', 'test', 0)], new Map([['a', label('a')]]), 'test');
+    const [annotation] = coco.annotations;
+    expect(annotation.keypoints.slice(0, 15)).toEqual([0, 0, 2, ...Array(12).fill(0)]);
+    expect(annotation.num_keypoints).toBe(12);
+  });
+
+  it('grows the detector’s box to every labelled point, inside the frame', () => {
+    const keypoints = Array.from({ length: 17 }, (): Keypoint => [25, 40, 2]);
+    keypoints[15] = [-5, 70, 1];
+    keypoints[16] = [90, 95, 2];
+    keypoints[1] = [0, 0, 2]; // An eye far off: not labelled, so it doesn't count.
+    const labels = new Map([['a', { ...label('a'), keypoints }]]);
+    const [annotation] = toCoco([task('a', 'test', 0)], labels, 'test').annotations;
+    expect(annotation.bbox).toEqual([0, 20, 90, 60]);
+    expect(annotation.area).toBe(5400);
   });
 });

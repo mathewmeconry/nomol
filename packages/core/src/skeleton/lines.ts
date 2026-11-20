@@ -29,20 +29,15 @@ const BONES: [number, number, Limb][] = [
   [LM.rightKnee, LM.rightAnkle, 'rightLeg'],
 ];
 
-/** Ear – eye – nose – eye – ear: shows where the head points, also upside down. */
-const HEAD: [number, number, Limb][] = [
-  [LM.leftEar, LM.leftEye, 'body'],
-  [LM.leftEye, LM.nose, 'body'],
-  [LM.nose, LM.rightEye, 'body'],
-  [LM.rightEye, LM.rightEar, 'body'],
-];
-
-/** The replay skeleton's lines in image coordinates, each with its colour. */
+/**
+ * The replay skeleton's lines in image coordinates, each with its colour. The head is a line from
+ * between the shoulders to the nose, also upside down; face details aren't drawn (the owner cares
+ * about the head, not the face, and they aren't labelled for training either).
+ */
 export function skeletonLines(pose: Pose): [Point, Point, string][] {
-  // In profile the far ear and eye are guesses; leave out what MediaPipe can't see.
-  const lines: [Point, Point, string][] = [...BONES, ...HEAD]
-    .filter(([a, b]) => isVisible(pose, a, b))
-    .map(([a, b, limb]) => [pose[a], pose[b], LIMB_COLORS[limb]]);
+  const lines: [Point, Point, string][] = BONES.filter(([a, b]) => isVisible(pose, a, b)).map(
+    ([a, b, limb]) => [pose[a], pose[b], LIMB_COLORS[limb]],
+  );
   if (isVisible(pose, LM.nose, LM.leftShoulder, LM.rightShoulder)) {
     const neck = {
       x: (pose[LM.leftShoulder].x + pose[LM.rightShoulder].x) / 2,

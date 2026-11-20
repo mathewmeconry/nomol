@@ -64,11 +64,27 @@ export const BONES: [number, number, string][] = [
   [13, 15, LIMB_COLORS.leftLeg],
   [12, 14, LIMB_COLORS.rightLeg],
   [14, 16, LIMB_COLORS.rightLeg],
-  [3, 1, LIMB_COLORS.body],
-  [1, 0, LIMB_COLORS.body],
-  [0, 2, LIMB_COLORS.body],
-  [2, 4, LIMB_COLORS.body],
 ];
+
+/**
+ * The points labelled by hand, in the order they are set. The nose stands for the head; eyes
+ * and ears are left out (the owner cares about the head, not the face) and exported as not
+ * labelled, so training keeps what the model learned about faces instead of copying the
+ * candidates' guesses, e.g. eyes on the back of the head upside down.
+ */
+export const LABELLED = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+/** The point after (or with `step` -1 before) `index` among the labelled ones, wrapping round. */
+export function nextLabelled(index: number | null, step: 1 | -1) {
+  if (index === null) return step === 1 ? LABELLED[0] : LABELLED.at(-1)!;
+  const at = LABELLED.indexOf(index);
+  return LABELLED[(at + step + LABELLED.length) % LABELLED.length];
+}
+
+/** The keypoints as exported: eyes and ears as not labelled. */
+export function withoutFace(keypoints: Keypoint[]) {
+  return keypoints.map((point, i): Keypoint => (LABELLED.includes(i) ? point : [0, 0, 0]));
+}
 
 /** A keypoint's own colour: its side's arm or leg, white for the head. */
 export function keypointColor(index: number) {

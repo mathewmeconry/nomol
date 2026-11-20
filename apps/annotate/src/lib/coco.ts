@@ -1,5 +1,19 @@
-import { BONES, KEYPOINTS } from './keypoints';
-import type { Label, Task } from './tasks';
+import { BONES, KEYPOINTS, withoutFace } from './keypoints';
+import type { Keypoint, Label, Task } from './tasks';
+
+/**
+ * The detector's box grown to every labelled point, inside the frame: models train on crops of
+ * it, and a detector's box can stop short of stretched legs.
+ */
+function personBox(task: Task, keypoints: Keypoint[]) {
+  const [bx, by, bw, bh] = task.box;
+  const points = keypoints.filter(([, , v]) => v > 0);
+  const x0 = Math.max(0, Math.min(bx, ...points.map(([x]) => x)));
+  const y0 = Math.max(0, Math.min(by, ...points.map(([, y]) => y)));
+  const x1 = Math.min(task.width, Math.max(bx + bw, ...points.map(([x]) => x)));
+  const y1 = Math.min(task.height, Math.max(by + bh, ...points.map(([, y]) => y)));
+  return [x0, y0, x1 - x0, y1 - y0];
+}
 
 /**
  * A COCO keypoint file for one set. Only the labelled person of each frame is annotated, which
@@ -19,8 +33,8 @@ export function toCoco(tasks: Task[], labels: Map<string, Label>, set: Task['set
       height: task.height,
     })),
     annotations: labelled.map((task, i) => {
-      const keypoints = labels.get(task.id)!.keypoints;
-      const [x, y, w, h] = task.box;
+      const keypoints = withoutFace(labels.get(task.id)!.keypoints);
+      const [x, y, w, h] = personBox(task, keypoints);
       return {
         id: i + 1,
         image_id: i + 1,
