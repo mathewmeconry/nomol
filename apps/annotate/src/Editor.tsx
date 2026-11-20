@@ -19,6 +19,7 @@ type Props = {
   onDiscard: (keypoints: Keypoint[], seconds: number) => void;
   onPrevious: () => void;
   onNextDiscarded: () => void;
+  onOverview: () => void;
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -93,7 +94,15 @@ function initial(task: Task, label: Label | undefined): Keypoint[] {
 }
 
 /** The frame zoomed to the person, the skeleton to correct, the candidates and the neighbours. */
-export function Editor({ task, label, onSave, onDiscard, onPrevious, onNextDiscarded }: Props) {
+export function Editor({
+  task,
+  label,
+  onSave,
+  onDiscard,
+  onPrevious,
+  onNextDiscarded,
+  onOverview,
+}: Props) {
   const [keypoints, setKeypoints] = useState(() => initial(task, label));
   const [history, setHistory] = useState<Keypoint[][]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -193,6 +202,7 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious, onNextDisca
       else if (key === 'z') undo();
       else if (key === 'p') onPrevious();
       else if (key === 'v') onNextDiscarded();
+      else if (key === 'o') onOverview();
       else if (key === 'r') setView(crop);
       else if (key === 'escape') setSelected(null);
     }

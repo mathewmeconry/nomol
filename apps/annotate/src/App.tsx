@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Editor } from './Editor';
+import { Overview } from './Overview';
 import { toCoco } from './lib/coco';
 import {
   afterSave,
@@ -27,6 +28,7 @@ const KEYS: [string, string][] = [
   ['Z', 'rückgängig'],
   ['P', 'zurück'],
   ['V', 'nächstes verworfenes'],
+  ['O', 'Übersicht'],
   ['R', 'Zoom zurück'],
 ];
 
@@ -69,6 +71,7 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
   const [saved, setSaved] = useState(() => [...initialLabels.keys()]);
   const [current, setCurrent] = useState(() => firstOpen(order, initialLabels));
   const [notice, setNotice] = useState('');
+  const [overview, setOverview] = useState(false);
 
   async function store(label: Label) {
     try {
@@ -129,6 +132,13 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
         <span className="ml-auto text-amber-300">{notice}</span>
         <button
           type="button"
+          onClick={() => setOverview(!overview)}
+          className="rounded-md border border-neutral-600 px-3 py-1 hover:bg-neutral-800"
+        >
+          {overview ? 'Zurück zum Bild' : 'Übersicht'}
+        </button>
+        <button
+          type="button"
           onClick={exportCoco}
           className="rounded-md border border-neutral-600 px-3 py-1 hover:bg-neutral-800"
         >
@@ -136,7 +146,18 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
         </button>
       </header>
 
-      {task ? (
+      {overview ? (
+        <Overview
+          order={order}
+          labels={labels}
+          saved={saved}
+          onOpen={(id) => {
+            setCurrent(id);
+            setOverview(false);
+          }}
+          onClose={() => setOverview(false)}
+        />
+      ) : task ? (
         <Editor
           key={task.id}
           task={task}
@@ -149,6 +170,7 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
           }
           onPrevious={() => setCurrent(previousSaved(saved, current))}
           onNextDiscarded={() => setCurrent(nextDiscarded(saved, labels, current) ?? current)}
+          onOverview={() => setOverview(true)}
         />
       ) : (
         <Message>

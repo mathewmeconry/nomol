@@ -553,7 +553,8 @@ It only runs locally and is never deployed: the frames show people, so the work 
   (`server/work-folder.ts`, only labels and COCO exports are written) and stores each frame's
   label as `labels/<id>.json`, so it resumes after a reload. Test set first, round by round
   through the videos, each one's most disputed frame first (by disagreement alone one clip took 9
-  of the first 33). P goes back in the order saved, V to the next discarded frame. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
+  of the first 33). P goes back in the order saved, V to the next discarded frame,
+  O shows all frames as thumbnails by state (open, labelled, discarded) to open one. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
   points are dragged, or selected (Tab) and placed with a click. Hidden points (H) are COCO's
   visibility 1, points not in the picture (Del) 0. "COCO exportieren" writes `coco_test.json` and
   `coco_train.json` with the labelled person per frame (fine for top-down models trained on
