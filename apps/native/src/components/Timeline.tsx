@@ -57,7 +57,7 @@ export default function Timeline({
 }
 
 const styles = StyleSheet.create({
-  touch: { height: 28, justifyContent: 'center' },
+  touch: { height: 40, justifyContent: 'center' },
   track: {
     height: 4,
     borderRadius: 2,

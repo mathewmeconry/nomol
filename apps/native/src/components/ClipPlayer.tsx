@@ -15,6 +15,7 @@ import {
 } from 'lucide-react-native';
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exportClip } from '../lib/clip-store';
 import type { SkeletonProgress } from '../lib/skeleton';
 import SkeletonOverlay from './SkeletonOverlay';
@@ -53,6 +54,8 @@ const TIME_UPDATE_S = 1 / 30;
 const DOUBLE_TAP_MS = 300;
 /** Finger movement that still counts as a tap. */
 const TAP_SLOP = 8;
+/** As the live controls: clear of the rounded screen corners. */
+const EDGE = 16;
 
 function formatTime(ms: number) {
   const seconds = Math.max(0, ms) / 1000;
@@ -133,6 +136,7 @@ export default function ClipPlayer({
   const [lastTouch, setLastTouch] = useState(0);
   const [zoom, setZoom] = useState<Zoom>(FULL_VIEW);
   const scrubbingRef = useRef(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     setPlayer(player, { playbackRate: speed });
@@ -273,6 +277,8 @@ export default function ClipPlayer({
       <View
         style={[styles.picture, picture]}
         onStartShouldSetResponder={() => true}
+        // A second finger asks the ancestors again, and the root would take the pinch over.
+        onResponderTerminationRequest={() => false}
         onResponderGrant={(event) => {
           const touches = touchesOf(event);
           const start = [...touches.values()][0] ?? { x: 0, y: 0 };
@@ -295,7 +301,16 @@ export default function ClipPlayer({
       </View>
 
       <View
-        style={[styles.controls, !controlsVisible && styles.hidden]}
+        style={[
+          styles.controls,
+          // Clear of the camera hole and the rounded screen corners.
+          {
+            paddingLeft: Math.max(EDGE, insets.left),
+            paddingRight: Math.max(EDGE, insets.right),
+            paddingBottom: Math.max(EDGE, insets.bottom),
+          },
+          !controlsVisible && styles.hidden,
+        ]}
         pointerEvents={controlsVisible ? 'auto' : 'none'}
         // A tap between the buttons shouldn't hide them.
         onStartShouldSetResponder={() => true}
@@ -422,26 +437,25 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     gap: 6,
-    paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   hidden: { opacity: 0 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  group: { flexDirection: 'row', gap: 4 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  group: { flexDirection: 'row', gap: 6 },
+  // Android's minimum touch target: hit with a finger at the phone's edge.
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minWidth: 40,
-    height: 36,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    minWidth: 48,
+    height: 48,
+    paddingHorizontal: 10,
+    borderRadius: 10,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
-  primary: { width: 48, backgroundColor: colors.text },
+  primary: { width: 60, backgroundColor: colors.text },
   on: { borderWidth: 1, borderColor: colors.sky },
   destructive: { backgroundColor: colors.destructive },
   text: { color: colors.text, fontSize: 14, fontWeight: '600' },
