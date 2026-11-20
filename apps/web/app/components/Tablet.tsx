@@ -39,6 +39,7 @@ import {
 import { startPreroll, type Preroll } from '~/lib/recording/preroll.client';
 import { startRecording } from '~/lib/recording/recorder.client';
 import { loadSoundOn, playStartSound, saveSoundOn } from '~/lib/sound.client';
+import { blinkTorch } from '~/lib/torch.client';
 import { cn } from 'cn';
 import { loadRunUp, loadZones, saveRunUp, saveZones } from '~/lib/zone-storage';
 import { DEFAULT_ZONE } from '@nomol/core/settings';
@@ -221,6 +222,7 @@ export default function Tablet() {
         activeRef.current = active;
         if (preroll) addPreroll(active, seenRef.current, result.event.pose, poses, time);
         if (soundOn) playStartSound();
+        blinkTorch(camera.stream);
         setArmedAt(null);
       } else if (prerollRef.current) {
         seenRef.current = rememberFrame(seenRef.current, frame, time, poses);

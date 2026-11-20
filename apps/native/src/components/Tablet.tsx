@@ -66,6 +66,9 @@ const DEFAULT_ASPECT = 4 / 3;
 /** After "Aufnahme starten", wait this long for someone to step into the start zone. */
 const ARMED_TIMEOUT_MS = 20_000;
 
+/** How long the camera's light shines when a recording starts. */
+const TORCH_BLINK_MS = 500;
+
 /** Android's `ActivityInfo.SCREEN_ORIENTATION_LOCKED`: stays as it is now. */
 const SCREEN_ORIENTATION_LOCKED = 14;
 
@@ -120,6 +123,7 @@ export default function Tablet() {
   const [status, setStatus] = useState<Exclude<Status, 'loading'>>('idle');
   const [boxes, setBoxes] = useState<Boxes>({ poses: [], recording: false });
   const [startSound] = useState(createStartSound);
+  const [torchOn, setTorchOn] = useState(false);
   const {
     clips,
     skeletonProgress,
@@ -190,6 +194,8 @@ export default function Tablet() {
     // The picture turns with the screen, so the zone stays where the coach drew it.
     orientationSource: 'interface',
     zoom: wide && wideZoom !== undefined ? wideZoom : 1,
+    // Front cameras have no light; asking them would only report an error.
+    torchMode: device?.hasTorch ? (torchOn ? 'on' : 'off') : undefined,
     onStarted: () => setError(null),
     onError: (e) => {
       // A zoom sent while the camera is being set up anew is cancelled; the new setup applies
@@ -260,6 +266,12 @@ export default function Tablet() {
     const timer = setTimeout(() => setArmedAt(null), ARMED_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [armedAt]);
+
+  useEffect(() => {
+    if (!torchOn) return;
+    const timer = setTimeout(() => setTorchOn(false), TORCH_BLINK_MS);
+    return () => clearTimeout(timer);
+  }, [torchOn]);
 
   // Paused while the coach draws the zone, so nobody starts a recording in the meantime.
   useEffect(() => {
@@ -332,6 +344,7 @@ export default function Tablet() {
     saveStills(stillsPath(active));
     setRecordError(null);
     if (soundOn) startSound.play();
+    setTorchOn(true);
     setArmedAt(null);
   }
 

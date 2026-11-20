@@ -64,7 +64,8 @@ Requirements, as agreed with the owner:
   replay fills the screen with its controls over it (they fade during playback) and the small
   live picture over it, where it can be dragged anywhere; a tap on it goes live. A tap on the replay
   shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet) incl. head; left side
-  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off). The replay
+  warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off) and the camera's light blinks
+  for 0.5 s (where it has one: not front cameras, not on iPhone). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
   upside down).
