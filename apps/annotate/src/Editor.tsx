@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+  type WheelEvent,
+} from 'react';
 import { cn } from 'cn';
 import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { Skeleton } from './Skeleton';
@@ -19,13 +26,61 @@ type Drag =
   | { kind: 'pan'; clientX: number; clientY: number; view: Rect; moved: boolean };
 
 const VISIBILITY = ['nicht im Bild', 'verdeckt', 'sichtbar'];
-const LEGEND: [string, string][] = [
-  [LIMB_COLORS.leftArm, 'linker Arm'],
-  [LIMB_COLORS.leftLeg, 'linkes Bein'],
-  [LIMB_COLORS.rightArm, 'rechter Arm'],
-  [LIMB_COLORS.rightLeg, 'rechtes Bein'],
-  [LIMB_COLORS.body, 'Kopf und Rumpf'],
+/** The legend: each colour with its points, which can be picked by name. */
+const LEGEND: [string, string, [number, string][]][] = [
+  [
+    LIMB_COLORS.body,
+    'Kopf',
+    [
+      [0, 'Nase'],
+      [1, 'Auge l.'],
+      [2, 'Auge r.'],
+      [3, 'Ohr l.'],
+      [4, 'Ohr r.'],
+    ],
+  ],
+  [
+    LIMB_COLORS.leftArm,
+    'linker Arm',
+    [
+      [5, 'Schulter'],
+      [7, 'Ellbogen'],
+      [9, 'Hand'],
+    ],
+  ],
+  [
+    LIMB_COLORS.rightArm,
+    'rechter Arm',
+    [
+      [6, 'Schulter'],
+      [8, 'Ellbogen'],
+      [10, 'Hand'],
+    ],
+  ],
+  [
+    LIMB_COLORS.leftLeg,
+    'linkes Bein',
+    [
+      [11, 'Hüfte'],
+      [13, 'Knie'],
+      [15, 'Knöchel'],
+    ],
+  ],
+  [
+    LIMB_COLORS.rightLeg,
+    'rechtes Bein',
+    [
+      [12, 'Hüfte'],
+      [14, 'Knie'],
+      [16, 'Knöchel'],
+    ],
+  ],
 ];
+
+/** Buttons don't take the focus, or a later Space would press them again besides saving. */
+function keepFocus(event: MouseEvent) {
+  event.preventDefault();
+}
 
 function initial(task: Task, label: Label | undefined): Keypoint[] {
   if (label && !label.discarded) return label.keypoints;
@@ -79,6 +134,17 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious }: Props) {
     setChosen(index);
   }
 
+  function toggleHidden(index: number) {
+    const [x, y, v] = keypoints[index];
+    change(update(index, [x, y, v === 1 ? 2 : 1]));
+  }
+
+  /** A point's name in the legend: the first click selects it, the next one hides it or not. */
+  function pick(index: number) {
+    if (selected === index) toggleHidden(index);
+    else setSelected(index);
+  }
+
   function undo() {
     if (history.length === 0) return;
     setKeypoints(history[history.length - 1]);
@@ -108,10 +174,8 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious }: Props) {
         event.preventDefault();
         const step = event.shiftKey ? 16 : 1;
         setSelected((s) => (s === null ? (event.shiftKey ? 16 : 0) : (s + step) % 17));
-      } else if (key === 'h' && selected !== null) {
-        const [x, y, v] = keypoints[selected];
-        change(update(selected, [x, y, v === 1 ? 2 : 1]));
-      } else if ((key === 'delete' || key === 'backspace') && selected !== null) {
+      } else if (key === 'h' && selected !== null) toggleHidden(selected);
+      else if ((key === 'delete' || key === 'backspace') && selected !== null) {
         const [x, y] = keypoints[selected];
         change(update(selected, [x, y, 0]));
       } else if (key.startsWith('arrow') && selected !== null) {
@@ -230,6 +294,7 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious }: Props) {
             key={candidate.name}
             type="button"
             onClick={() => choose(i)}
+            onMouseDown={keepFocus}
             className={cn(
               'overflow-hidden rounded-md border text-left text-xs',
               i === chosen ? 'border-sky-400' : 'border-neutral-700',
@@ -288,17 +353,35 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious }: Props) {
             ? 'Kein Punkt ausgewählt (Tab oder Punkt anklicken)'
             : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
         </p>
-        {LEGEND.map(([color, name]) => (
-          <span key={name} className="flex items-center gap-1.5">
+        {LEGEND.map(([color, name, points]) => (
+          <span key={name} className="flex items-center gap-1">
             <span className="size-3 rounded-full" style={{ background: color }} />
-            {name}
+            <span className="mr-0.5">{name}:</span>
+            {points.map(([index, short]) => {
+              const v = keypoints[index][2];
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  title={`${KEYPOINT_NAMES[index]}: ${VISIBILITY[v]}`}
+                  onClick={() => pick(index)}
+                  onMouseDown={keepFocus}
+                  className={cn(
+                    'rounded border px-1.5 text-xs text-neutral-200 hover:bg-neutral-800',
+                    v === 1 ? 'border-dashed border-neutral-400' : 'border-transparent',
+                    v === 0 && 'text-neutral-500 line-through',
+                    index === selected && 'bg-sky-900',
+                  )}
+                >
+                  {short}
+                </button>
+              );
+            })}
           </span>
         ))}
-        <span className="flex items-center gap-1.5">
-          <span className="size-3 rounded-full border-2 border-neutral-300" />
-          verdeckt
+        <span className="text-neutral-500">
+          gestrichelt = verdeckt · Seiten aus Sicht der Person
         </span>
-        <span className="text-neutral-500">Seiten aus Sicht der Person</span>
       </div>
     </div>
   );
