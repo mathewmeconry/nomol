@@ -38,12 +38,23 @@ export type Label = z.infer<typeof labelSchema>;
 
 /**
  * The order to label in: the test set first, so stopping early still leaves something to measure
- * with, and in each set the frames where the models disagree most.
+ * with. In each set round by round through the videos, each video's most disputed frame not yet
+ * shown first: sorted by disagreement alone, one clip with many similar hard frames came up 9
+ * times among the first 33.
  */
 export function labellingOrder(tasks: Task[]) {
-  return [...tasks].sort(
+  const rank = new Map<string, number>();
+  const byVideo = Map.groupBy(tasks, (task) => task.video);
+  for (const frames of byVideo.values()) {
+    frames
+      .toSorted((a, b) => b.disagreement - a.disagreement)
+      .forEach((task, i) => rank.set(task.id, i));
+  }
+  return tasks.toSorted(
     (a, b) =>
-      Number(a.set === 'train') - Number(b.set === 'train') || b.disagreement - a.disagreement,
+      Number(a.set === 'train') - Number(b.set === 'train') ||
+      rank.get(a.id)! - rank.get(b.id)! ||
+      b.disagreement - a.disagreement,
   );
 }
 
@@ -60,6 +71,13 @@ export function previousSaved(saved: string[], current: string | null) {
   const at = current === null ? -1 : saved.indexOf(current);
   if (at === -1) return saved.at(-1) ?? current;
   return saved[at - 1] ?? current;
+}
+
+/** V: the next discarded frame after `current` in the order saved, wrapping round, or null. */
+export function nextDiscarded(saved: string[], labels: Map<string, Label>, current: string | null) {
+  const discarded = saved.filter((id) => labels.get(id)?.discarded);
+  const at = current === null ? -1 : saved.indexOf(current);
+  return discarded.find((id) => saved.indexOf(id) > at) ?? discarded[0] ?? null;
 }
 
 /** After saving: from a frame gone back to, on to the one saved after it, else to `open`. */

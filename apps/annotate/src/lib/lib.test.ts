@@ -4,6 +4,7 @@ import {
   afterSave,
   firstOpen,
   labellingOrder,
+  nextDiscarded,
   previousSaved,
   tasksFileSchema,
   type Keypoint,
@@ -11,11 +12,11 @@ import {
   type Task,
 } from './tasks';
 
-function task(id: string, set: Task['set'], disagreement: number): Task {
+function task(id: string, set: Task['set'], disagreement: number, video = 'v.mp4'): Task {
   return {
     id,
     set,
-    video: `${set}/v.mp4`,
+    video: `${set}/${video}`,
     time: 1,
     image: `frames/${id}.jpg`,
     width: 100,
@@ -48,6 +49,31 @@ describe('tasks', () => {
       task('test-hard', 'test', 0.5),
     ]);
     expect(order.map((t) => t.id)).toEqual(['test-hard', 'test-easy', 'train-hard']);
+  });
+
+  it('goes round the videos, each one’s most disputed frame first', () => {
+    const order = labellingOrder([
+      task('a1', 'test', 0.9, 'a.mp4'),
+      task('a2', 'test', 0.8, 'a.mp4'),
+      task('a3', 'test', 0.7, 'a.mp4'),
+      task('b1', 'test', 0.2, 'b.mp4'),
+      task('b2', 'test', 0.1, 'b.mp4'),
+    ]);
+    expect(order.map((t) => t.id)).toEqual(['a1', 'b1', 'a2', 'b2', 'a3']);
+  });
+
+  it('jumps to the next discarded frame in the order saved, wrapping round', () => {
+    const saved = ['a', 'b', 'c', 'd'];
+    const labels = new Map([
+      ['a', label('a', true)],
+      ['b', label('b')],
+      ['c', label('c', true)],
+      ['d', label('d')],
+    ]);
+    expect(nextDiscarded(saved, labels, 'new')).toBe('a');
+    expect(nextDiscarded(saved, labels, 'a')).toBe('c');
+    expect(nextDiscarded(saved, labels, 'c')).toBe('a');
+    expect(nextDiscarded(saved, new Map([['b', label('b')]]), 'b')).toBeNull();
   });
 
   it('continues with the first frame without a label', () => {

@@ -6,6 +6,7 @@ import {
   firstOpen,
   labelSchema,
   labellingOrder,
+  nextDiscarded,
   previousSaved,
   tasksFileSchema,
   type Keypoint,
@@ -25,6 +26,7 @@ const KEYS: [string, string][] = [
   ['X', 'verwerfen'],
   ['Z', 'rückgängig'],
   ['P', 'zurück'],
+  ['V', 'nächstes verworfenes'],
   ['R', 'Zoom zurück'],
 ];
 
@@ -73,7 +75,14 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
       await put(`labels/${label.id}.json`, label);
       const next = new Map(labels).set(label.id, label);
       setLabels(next);
-      setCurrent(afterSave(saved, label.id, firstOpen(order, next)));
+      const open = firstOpen(order, next);
+      // Going through the discarded frames (V), Space and X lead to the next one.
+      const discarded = labels.get(label.id)?.discarded
+        ? nextDiscarded(saved, next, label.id)
+        : null;
+      setCurrent(
+        discarded && discarded !== label.id ? discarded : afterSave(saved, label.id, open),
+      );
       if (!saved.includes(label.id)) setSaved([...saved, label.id]);
       setNotice('');
     } catch (error) {
@@ -107,6 +116,9 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
       <header className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-neutral-800 px-3 py-2 text-sm">
         <span>Test {progress('test')}</span>
         <span>Training {progress('train')}</span>
+        <span className="text-neutral-400">
+          {[...labels.values()].filter((l) => l.discarded).length} verworfen
+        </span>
         <span className="text-neutral-400">Ø {average.toFixed(1)} s pro Bild</span>
         {task && (
           <span className="text-neutral-400">
@@ -136,6 +148,7 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
             store({ id: task.id, keypoints, discarded: true, seconds })
           }
           onPrevious={() => setCurrent(previousSaved(saved, current))}
+          onNextDiscarded={() => setCurrent(nextDiscarded(saved, labels, current) ?? current)}
         />
       ) : (
         <Message>

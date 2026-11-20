@@ -551,8 +551,9 @@ It only runs locally and is never deployed: the frames show people, so the work 
   faster (YOLOX-x 533 vs ~600 ms, RTMPose-x 130 vs 154 ms), so this stays on the CPU.
 - `pnpm annotate` (port 5174) serves the work folder through a Vite plugin
   (`server/work-folder.ts`, only labels and COCO exports are written) and stores each frame's
-  label as `labels/<id>.json`, so it resumes after a reload. Test set first, most disputed frames
-  first. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
+  label as `labels/<id>.json`, so it resumes after a reload. Test set first, round by round
+  through the videos, each one's most disputed frame first (by disagreement alone one clip took 9
+  of the first 33). P goes back in the order saved, V to the next discarded frame. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
   points are dragged, or selected (Tab) and placed with a click. Hidden points (H) are COCO's
   visibility 1, points not in the picture (Del) 0. "COCO exportieren" writes `coco_test.json` and
   `coco_train.json` with the labelled person per frame (fine for top-down models trained on
