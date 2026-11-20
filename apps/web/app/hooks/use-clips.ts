@@ -10,6 +10,12 @@ import {
 } from '~/lib/skeleton/refiner.client';
 
 /**
+ * Switched off until the replay skeleton is good enough to use: computing it only cost the phone
+ * power. The frames for it are still saved while recording.
+ */
+const COMPUTE_SKELETON = false;
+
+/**
  * All clips, newest first: kept in IndexedDB until deleted by hand (they're test footage too),
  * and each one's replay skeleton computed in the background after it was recorded.
  *
@@ -71,7 +77,7 @@ export default function useClips(detector: PoseDetector | null) {
     samples: SkeletonSample[],
     first: { startMs: number; endMs: number },
   ) {
-    if (samples.length === 0 || !detector) return;
+    if (!COMPUTE_SKELETON || samples.length === 0 || !detector) return;
     if (!refinerRef.current) {
       refinerRef.current = createSkeletonRefiner(detector.heavyModel);
       if (pausedRef.current) refinerRef.current.pause();

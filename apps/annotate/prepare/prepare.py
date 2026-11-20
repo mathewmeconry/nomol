@@ -7,7 +7,12 @@ where the candidates disagree most (plus some at random, so the test set isn't o
 frames) and writes them with their candidates to WORK/tasks.json and WORK/frames/. Videos already
 in tasks.json are skipped, so new videos can be added later.
 
+With --app-gaps it adds, per clip, frames where the app's replay skeleton (from the clip's
+.nomol.txt) was missing although the gymnast was seen within 1.5 s, the person nearest that
+sighting: where the app shows nothing, the frames that matter most. They are marked appMissed.
+
     uv run prepare.py ~/nomol-annotate
+    uv run prepare.py ~/nomol-annotate --app-gaps
 """
 
 import argparse
@@ -39,6 +44,9 @@ KEYPOINTS = [
 ]  # fmt: skip
 CONTEXT = [-0.2, -0.1, 0.1, 0.2]
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv"}
+# Nose, shoulders to wrists, hips to ankles in MediaPipe's layout: the app's skeleton is usable
+# where 8 of them are visible.
+APP_BODY = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
 # A view around the person: their box plus a margin, turned, at most this many pixels wide.
 VIEW_MARGIN = 1.3
 VIEW_MAX = 768
@@ -61,13 +69,12 @@ class Models:
             )
         )
 
+    def people(self, frame):
+        """Everyone the detector finds, as x, y, width, height."""
+        return [[float(x0), float(y0), float(x1 - x0), float(y1 - y0)] for x0, y0, x1, y1 in self.detector(frame)]
+
     def largest_person(self, frame):
-        boxes = self.detector(frame)
-        if len(boxes) == 0:
-            return None
-        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-        x0, y0, x1, y1 = boxes[int(np.argmax(areas))]
-        return [float(x0), float(y0), float(x1 - x0), float(y1 - y0)]
+        return max(self.people(frame), key=lambda b: b[2] * b[3], default=None)
 
     def candidates(self, frame, box):
         """Skeleton candidates for the person in `box` as (name, 17×3 array of x, y, score)."""
@@ -189,6 +196,75 @@ def choose(samples, count: int, gap: float, seed: str):
     return sorted(chosen, key=lambda s: s["time"])
 
 
+def export_of(video: Path):
+    """The app's export beside the clip (the video is usually a link into the clip's folder)."""
+    clip = video.resolve()
+    path = clip.with_name(f"{clip.stem}.nomol.txt")
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def app_gaps(export):
+    """The times (s, every 0.1 s) where the app's replay skeleton had no usable pose although the
+    gymnast was seen within 1.5 s, each with the torso centre (normalized) of that sighting."""
+
+    def usable(pose):
+        return sum(pose[i]["visibility"] > 0.5 for i in APP_BODY) >= 8
+
+    def torso(pose):
+        points = [pose[i] for i in (11, 12, 23, 24)]
+        if min(p["visibility"] for p in points) < 0.5:
+            return None
+        return (sum(p["x"] for p in points) / 4, sum(p["y"] for p in points) / 4)
+
+    covered = [e["time"] for e in export["skeleton"] if usable(e["pose"])]
+    seen = [(e["time"], torso(e["pose"])) for e in export["frames"] + export["skeleton"]]
+    seen = [(t, c) for t, c in seen if c]
+    gaps = []
+    for slot in range(int(export["durationMs"] // 100)):
+        t = slot * 100 + 50
+        if any(abs(c - t) <= 60 for c in covered):
+            continue
+        near = min(seen, key=lambda s: abs(s[0] - t), default=None)
+        if near and abs(near[0] - t) <= 1500:
+            gaps.append((t / 1000, near[1]))
+    return gaps
+
+
+def sample_gaps(models, video: Path, gaps, count: int, gap: float, taken, seed: str):
+    """Frames from the app's gaps, at least `gap` s apart and 0.3 s from frames already taken
+    (clips are short and often full at 1 s; 0.3 s on, a gymnast's pose has changed): the person
+    nearest the gymnast's last sighting, if near enough to be them, with candidates."""
+    order = gaps[:]
+    random.Random(seed).shuffle(order)
+    wanted = []
+    for t, centre in order:
+        if all(abs(t - w[0]) >= gap for w in wanted) and all(abs(t - s) >= 0.3 for s in taken):
+            wanted.append((t, centre))
+        # Some won't show the gymnast: more tries than frames needed.
+        if len(wanted) >= count * 2:
+            break
+    wanted.sort()
+    samples = []
+    for time, frame in frames(video):
+        if not wanted or len(samples) >= count:
+            break
+        if time < wanted[0][0]:
+            continue
+        _, (cx, cy) = wanted.pop(0)
+        height, width = frame.shape[:2]
+        x, y = cx * width, cy * height
+
+        def offset(b):
+            return np.hypot(b[0] + b[2] / 2 - x, b[1] + b[3] / 2 - y)
+
+        box = min(models.people(frame), key=offset, default=None)
+        if box is None or offset(box) > 0.75 * max(box[2], box[3]) or box[3] < height * 0.1:
+            continue
+        candidates, score = disagreement(models.candidates(frame, box), box)
+        samples.append({"time": time, "box": box, "candidates": candidates, "disagreement": score})
+    return samples
+
+
 def crop_rect(box, frame_shape):
     """The part of the frame the tool zooms to: the box with a margin of a quarter of its longer
     side all round (not a square, which left someone lying flat small), kept inside the frame."""
@@ -223,13 +299,54 @@ def save_frames(video: Path, chosen, ids, work: Path):
     return {name for _, name, _ in wanted}
 
 
+def add_tasks(data, work: Path, split: str, video: Path, chosen, app_missed: bool):
+    """Saves the chosen frames and adds them to tasks.json's data."""
+    stem = re.sub(r"[^A-Za-z0-9-]+", "-", video.stem)
+    ids = [f"{split}_{stem}_{round(s['time'] * 1000):07d}" for s in chosen]
+    height, width = next(frames(video))[1].shape[:2]
+    for s in chosen:
+        s["crop"] = crop_rect(s["box"], (height, width))
+    missing = save_frames(video, chosen, ids, work)
+    for s, task_id in zip(chosen, ids):
+        data["tasks"].append(
+            {
+                "id": task_id,
+                "set": split,
+                "video": f"{split}/{video.name}",
+                "time": round(s["time"], 3),
+                "image": f"frames/{task_id}.jpg",
+                "width": width,
+                "height": height,
+                "box": [round(v, 1) for v in s["box"]],
+                "crop": [round(v, 1) for v in s["crop"]],
+                "context": [
+                    {"offset": offset, "image": f"frames/{task_id}_{offset:+.1f}.jpg"}
+                    for offset in CONTEXT
+                    if f"{task_id}_{offset:+.1f}.jpg" not in missing
+                ],
+                "disagreement": round(s["disagreement"], 4),
+                "appMissed": app_missed,
+                "candidates": [
+                    {"name": name, "keypoints": [[round(float(v), 1 if k < 2 else 3) for k, v in enumerate(p)] for p in points]}
+                    for name, points in s["candidates"]
+                ],
+            }
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("work", type=Path, help="work folder with videos/test and videos/train")
-    parser.add_argument("--per-video", type=int, default=15, help="frames to keep per video")
+    parser.add_argument(
+        "--app-gaps",
+        action="store_true",
+        help="add frames where the app's replay skeleton was missing (reads each clip's .nomol.txt)",
+    )
+    parser.add_argument("--per-video", type=int, help="frames to keep per video (15, with --app-gaps 8)")
     parser.add_argument("--step", type=float, default=0.5, help="seconds between sampled frames")
     parser.add_argument("--gap", type=float, default=1.0, help="minimum seconds between kept frames")
     args = parser.parse_args()
+    per_video = args.per_video or (8 if args.app_gaps else 15)
 
     work = args.work.expanduser().resolve()
     (work / "frames").mkdir(parents=True, exist_ok=True)
@@ -243,7 +360,8 @@ def main():
         for path in sorted((work / "videos" / split).glob("*"))
         if path.suffix.lower() in VIDEO_EXTENSIONS
     ]
-    todo = [(split, path) for split, path in videos if f"{split}/{path.name}" not in data["videos"]]
+    done = data.setdefault("gapVideos" if args.app_gaps else "videos", [])
+    todo = [(split, path) for split, path in videos if f"{split}/{path.name}" not in done]
     if not todo:
         print(f"No new videos in {work / 'videos'}/test or /train.", file=sys.stderr)
         return
@@ -251,39 +369,22 @@ def main():
 
     for split, video in todo:
         print(f"{split}/{video.name}", file=sys.stderr)
-        samples = sample(models, video, args.step)
-        chosen = choose(samples, args.per_video, args.gap, video.name)
-        stem = re.sub(r"[^A-Za-z0-9-]+", "-", video.stem)
-        ids = [f"{split}_{stem}_{round(s['time'] * 1000):07d}" for s in chosen]
-        height, width = next(frames(video))[1].shape[:2]
-        for s in chosen:
-            s["crop"] = crop_rect(s["box"], (height, width))
-        missing = save_frames(video, chosen, ids, work)
-        for s, task_id in zip(chosen, ids):
-            data["tasks"].append(
-                {
-                    "id": task_id,
-                    "set": split,
-                    "video": f"{split}/{video.name}",
-                    "time": round(s["time"], 3),
-                    "image": f"frames/{task_id}.jpg",
-                    "width": width,
-                    "height": height,
-                    "box": [round(v, 1) for v in s["box"]],
-                    "crop": [round(v, 1) for v in s["crop"]],
-                    "context": [
-                        {"offset": offset, "image": f"frames/{task_id}_{offset:+.1f}.jpg"}
-                        for offset in CONTEXT
-                        if f"{task_id}_{offset:+.1f}.jpg" not in missing
-                    ],
-                    "disagreement": round(s["disagreement"], 4),
-                    "candidates": [
-                        {"name": name, "keypoints": [[round(float(v), 1 if k < 2 else 3) for k, v in enumerate(p)] for p in points]}
-                        for name, points in s["candidates"]
-                    ],
-                }
-            )
-        data["videos"].append(f"{split}/{video.name}")
+        if args.app_gaps:
+            export = export_of(video)
+            if export is None:
+                print("  no .nomol.txt beside the clip", file=sys.stderr)
+                continue
+            gaps = app_gaps(export)
+            existing = [t for t in data["tasks"] if t["video"] == f"{split}/{video.name}"]
+            # Frames prepared before can fall into a gap too.
+            for task in existing:
+                task["appMissed"] = any(abs(task["time"] - t) <= 0.06 for t, _ in gaps)
+            taken = [t["time"] for t in existing]
+            chosen = sample_gaps(models, video, gaps, per_video, args.gap, taken, video.name)
+        else:
+            chosen = choose(sample(models, video, args.step), per_video, args.gap, video.name)
+        add_tasks(data, work, split, video, chosen, args.app_gaps)
+        done.append(f"{split}/{video.name}")
         # Written after every video, so a long run that stops keeps what it has.
         tasks_file.write_text(json.dumps(data))
         print(f"  {len(chosen)} frames kept", file=sys.stderr)

@@ -510,6 +510,13 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   at Sprung, 12 neutral, 1 worse (a girl sliding down a mat, stretched out, looked longer).
   Still open: a gymnast standing half outside the picture is often not found, and tracking
   hops between girls of the same size waiting side by side.
+- Skeleton coverage, Android, November 14–19 2026 (292 exports, 49 minutes): the replay
+  skeleton had a usable pose (8 of nose, arms and legs visible) in 37 % of each recording's
+  0.1 s steps (median clip 36 %, 187 clips under half), the live poses in 53 %; part of that is
+  time nobody is in the picture. Where it is drawn the owner finds it decent: the skeleton is
+  mostly missing rather than wrong, i.e. the gymnast isn't found (MediaPipe's detector wants an
+  upright, face-like view; the replay works on 640 px stills). A separate person detector
+  (YOLOX finds upside-down gymnasts) and full-resolution frames are the levers to measure first.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.
@@ -546,7 +553,11 @@ It only runs locally and is never deployed: the frames show people, so the work 
   RTMPose-x upright and turned 180°, MediaPipe heavy upright and turned 90°, 180° and 270° (in
   views around the person, like the replay skeleton). Per video it keeps 15 frames at least 1 s
   apart: two thirds where the candidates disagree most (the best candidate's median distance to
-  the others), a third at random, so the test set isn't only the hardest frames. It writes
+  the others), a third at random, so the test set isn't only the hardest frames. With
+  `--app-gaps` it reads each clip's `.nomol.txt` and adds up to 8 frames where the app's replay
+  skeleton was missing although the gymnast was seen within 1.5 s, taking the person nearest
+  that sighting (0.3 s from frames already there; clips are short and full at 1 s), and marks
+  every frame in such a gap `appMissed` (the tool shows "App ohne Skelett"). It writes
   `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. The models take
   ~0.45 s per sampled frame on the laptop's CPU (i7-1280P), so a 10-minute video takes about 15
   minutes; `--step` samples less. The tool reads `tasks.json` on every reload, so labelling can

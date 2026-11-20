@@ -4,6 +4,12 @@ import { deleteAllClips, deleteClip, loadClips } from '../lib/clip-store';
 import { createSkeletonRefiner, type SkeletonProgress } from '../lib/skeleton';
 
 /**
+ * Switched off until the replay skeleton is good enough to use: computing it only cost the phone
+ * power. The stills for it are still saved while recording and kept until it is computed.
+ */
+const COMPUTE_SKELETON = false;
+
+/**
  * All clips, newest first, kept on the device until deleted by hand (they're test footage too),
  * and each one's replay skeleton computed in the background after it was recorded; one left
  * unfinished when the app closed continues on the next start.
@@ -33,6 +39,7 @@ export function useClips() {
   }, []);
 
   function computeSkeleton(clip: Clip) {
+    if (!COMPUTE_SKELETON) return;
     refiner.compute({
       clip,
       onSkeleton(skeleton) {

@@ -283,15 +283,17 @@ export default function ClipPlayer({ clip, clipStrip, skeletonProgress, onLive, 
         >
           {SPEEDS.find((s) => s.value === speed)?.label}
         </Button>
-        <Toggle
-          variant="outline"
-          pressed={skeleton}
-          onPressedChange={setSkeleton}
-          className="data-[state=on]:text-sky-300"
-        >
-          Skelett
-        </Toggle>
-        {skeleton && (
+        {clip.skeleton.length > 0 && (
+          <Toggle
+            variant="outline"
+            pressed={skeleton}
+            onPressedChange={setSkeleton}
+            className="data-[state=on]:text-sky-300"
+          >
+            Skelett
+          </Toggle>
+        )}
+        {skeleton && clip.skeleton.length > 0 && (
           <span className="hidden gap-3 text-xs text-slate-300 lg:flex">
             {(
               [

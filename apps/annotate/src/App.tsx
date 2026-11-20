@@ -128,6 +128,7 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
           <span className="text-neutral-400">
             {task.video} · {task.time.toFixed(1)} s · Uneinigkeit {task.disagreement.toFixed(2)}
             {labels.get(task.id)?.discarded && ' · verworfen'}
+            {task.appMissed && <span className="text-amber-300"> · App ohne Skelett</span>}
           </span>
         )}
         <span className="ml-auto text-amber-300">{notice}</span>
