@@ -27,8 +27,17 @@ import kotlin.math.min
 class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
   /** Detection runs on the camera thread, a model switch on a background one. */
   private val lock = Any()
-  private var landmarker: Landmarker? = null
-  private var lastTimeMs = Long.MIN_VALUE
+  private var modelName: String? = null
+
+  /**
+   * One per crop (the first crop always goes to the first): in VIDEO mode MediaPipe follows the
+   * poses it found into the next picture, and alternating two start zones on one landmarker lost
+   * that. Its person detector alone misses many people with their arms above the head: on the
+   * floor (November 20 2026) a girl showing the start sign was found in 5 of 60 frames that way,
+   * followed in 43 with a landmarker of her own.
+   */
+  private val landmarkers = mutableListOf<Landmarker>()
+  private val lastTimesMs = mutableListOf<Long>()
   private var count = 0
 
   /** One at a time, so a slow write never piles up work on the camera thread. */
@@ -36,10 +45,15 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
 
   override fun load(model: Model): Promise<Unit> =
     Promise.async {
-      val created = Landmarker(if (model == Model.HEAVY) "heavy" else "lite", RunningMode.VIDEO)
+      val name = if (model == Model.HEAVY) "heavy" else "lite"
+      val created = Landmarker(name, RunningMode.VIDEO)
       synchronized(lock) {
-        landmarker?.close()
-        landmarker = created
+        landmarkers.forEach { it.close() }
+        landmarkers.clear()
+        lastTimesMs.clear()
+        landmarkers.add(created)
+        lastTimesMs.add(Long.MIN_VALUE)
+        modelName = name
       }
     }
 
@@ -56,7 +70,7 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     val image = (frame as NativeFrame).image
     val whole = image.toBitmap()
     if (stillPath != null) saveStill(whole, rotation, stillPath)
-    val found = crops.map { crop -> detectIn(whole, crop, rotation, mirrored, timeMs) }
+    val found = crops.mapIndexed { i, crop -> detectIn(i, whole, crop, rotation, mirrored, timeMs) }
     whole.recycle()
 
     val result = flatten(found.flatten())
@@ -68,6 +82,7 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
   }
 
   private fun detectIn(
+    index: Int,
     whole: Bitmap,
     crop: Crop,
     rotation: Double,
@@ -93,11 +108,17 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
       )
     try {
       return synchronized(lock) {
-        val landmarker = landmarker ?: return emptyList()
-        // MediaPipe refuses timestamps that don't grow, also between the crops of one frame.
-        val time = max(timeMs.toLong(), lastTimeMs + 1)
-        lastTimeMs = time
-        landmarker.run { it.detectForVideo(BitmapImageBuilder(input).build(), time) }.landmarks()
+        val name = modelName ?: return emptyList()
+        // Created on the camera thread the first time a second start zone is looked at: that
+        // frame is late, but nobody pays for a landmarker never used.
+        while (landmarkers.size <= index) {
+          landmarkers.add(Landmarker(name, RunningMode.VIDEO))
+          lastTimesMs.add(Long.MIN_VALUE)
+        }
+        // MediaPipe refuses timestamps that don't grow.
+        val time = max(timeMs.toLong(), lastTimesMs[index] + 1)
+        lastTimesMs[index] = time
+        landmarkers[index].run { it.detectForVideo(BitmapImageBuilder(input).build(), time) }.landmarks()
       }
     } finally {
       // createBitmap may hand back the frame's own bitmap, recycled after all crops.
@@ -140,8 +161,9 @@ class HybridPoseLandmarker : HybridPoseLandmarkerSpec() {
     super.dispose()
     stillWriter.shutdown()
     synchronized(lock) {
-      landmarker?.close()
-      landmarker = null
+      landmarkers.forEach { it.close() }
+      landmarkers.clear()
+      modelName = null
     }
   }
 

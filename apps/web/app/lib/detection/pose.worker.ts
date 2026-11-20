@@ -18,8 +18,16 @@ export type DetectResponse =
   | { id: number; type: 'poses'; frame: VideoFrame; poses: Pose[]; ms: number }
   | { id: number; type: 'error'; message: string };
 
-let landmarker: PoseLandmarker | null = null;
-let lastTime = -Infinity;
+let model: Uint8Array | null = null;
+/**
+ * One per area (the first area always goes to the first): in VIDEO mode MediaPipe follows the
+ * poses it found into the next picture, and alternating two start zones on one landmarker lost
+ * that. Its person detector alone misses many people with their arms above the head: on the
+ * floor (November 20 2026) a girl showing the start sign was found in 5 of 60 frames that way,
+ * followed in 43 with a landmarker of her own.
+ */
+let landmarkers: PoseLandmarker[] = [];
+let lastTimes: number[] = [];
 
 function reply(message: DetectResponse, transfer: Transferable[] = []) {
   self.postMessage(message, transfer);
@@ -63,18 +71,25 @@ self.onmessage = async (event: MessageEvent<DetectRequest>) => {
       // Replacing the model (lite when heavy is too slow) keeps detecting with the old one
       // until the new one is ready.
       const created = await createLandmarker(request.model, 'VIDEO');
-      landmarker?.close();
-      landmarker = created;
+      for (const landmarker of landmarkers) landmarker.close();
+      landmarkers = [created];
+      lastTimes = [-Infinity];
+      model = request.model;
       reply({ id: request.id, type: 'ready' });
       return;
     }
-    const start = performance.now();
     const { frame, areas, time } = request;
-    const found = areas.map((area) => {
-      // MediaPipe refuses timestamps that don't grow, in whole ms, also between the areas of
-      // one frame.
-      lastTime = Math.max(Math.floor(time), lastTime + 1);
-      return detectIn(landmarker!, frame, area, lastTime);
+    // Created the first time a second start zone is looked at: that frame is late, but nobody
+    // pays for a landmarker never used.
+    while (landmarkers.length < areas.length) {
+      landmarkers.push(await createLandmarker(model!, 'VIDEO'));
+      lastTimes.push(-Infinity);
+    }
+    const start = performance.now();
+    const found = areas.map((area, i) => {
+      // MediaPipe refuses timestamps that don't grow, in whole ms.
+      lastTimes[i] = Math.max(Math.floor(time), lastTimes[i] + 1);
+      return detectIn(landmarkers[i], frame, area, lastTimes[i]);
     });
     const visible = frame.visibleRect!;
     const poses = mergeAreas(found, visible.width / visible.height);

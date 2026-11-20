@@ -27,7 +27,9 @@ Requirements, as agreed with the owner:
   picture), leaves the picture (1.5 s unseen; 3 s if last seen in an element, since a swing on the
   rings leaves the picture and comes back), or after ~6 s of only standing or walking
   (both feet on the floor or a landing mat) since their last element; with "Auto von
-  links/rechts" (Sprung: one jump, and the next gymnast follows quickly) after 2.5 s. An
+  links/rechts" (Sprung: one jump, and the next gymnast follows quickly) after 2.5 s upright
+  (knees below the hips, shoulders above them), wherever the feet seem to be: behind the landing
+  mat they are hidden and guessed above the floor line. An
   automatic start counts as an element, so someone who set it off and then only stands stops it
   too. Waiting before the routine (sign or button start)
   and short breaks between elements must not stop it. An element is anything but both feet on the
@@ -69,7 +71,9 @@ Requirements, as agreed with the owner:
   for 0.5 s (where it has one: not front cameras, not on iPhone). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
   bar above the timeline; parts not computed yet show no skeleton (never the live one, it's wrong
-  upside down).
+  upside down). Its computation is switched off for now (`COMPUTE_SKELETON` in both apps'
+  `use-clips.ts`) until it is good enough to use; the frames for it are still saved while
+  recording, and the "Skelett" switch only shows for clips that have one.
 - **Clips:** recordings as a strip with one thumbnail each. All kept on the device
   (IndexedDB, persistent storage requested) until deleted with two taps; no automatic deletion,
   they're test footage for later; or all at once in the settings. Clips are exportable as video + `.nomol.txt` (JSON; Chrome on
@@ -268,8 +272,10 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   (`detectionAreas`): each start zone on its own (for an automatic start plus a quarter of its
   size on each side, where the runner comes from), widened to a square, one detection per zone
   and frame (two zones at either end of the floor track together span the picture, where the
-  gymnasts would be tiny); MediaPipe's timestamps grow by at least 1 ms per detection, also
-  between the zones of one frame (it counts whole ms); while recording only around the
+  gymnasts would be tiny); each area index has a landmarker of its own (the second created when
+  a second zone is first looked at), as in VIDEO mode MediaPipe follows the poses it found into
+  the next picture and alternating zones on one landmarker lost that; MediaPipe's timestamps
+  grow by at least 1 ms per detection (it counts whole ms); while recording only around the
   gymnast's last sighting, 4 of their torso lengths on each side (`gymnastArea`; the median of
   the last sightings, changing size while they are missing). MediaPipe shrinks its
   input to a 256 px square, so on a whole 16:9 frame someone at the back of the hall was a few
@@ -517,6 +523,21 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   mostly missing rather than wrong, i.e. the gymnast isn't found (MediaPipe's detector wants an
   upright, face-like view; the replay works on 640 px stills). A separate person detector
   (YOLOX finds upside-down gymnasts) and full-resolution frames are the levers to measure first.
+- Floor and Sprung, Android, November 20 2026 (122 clips on the phone, 64 at Sprung, ~30 on the
+  floor track with a zone at each end; failed signs and missed triggers leave no clip, so they
+  were found through button starts and long clips). Floor: in button-started clips a girl was
+  showing the sign in the zone, unfound. MediaPipe's person detector misses many people with
+  their arms above the head (here a striped shirt against wall bars; a tight crop and the whole
+  picture missed her too), and only VIDEO mode's tracking of someone found before carries them
+  into the sign. Both zones went through one landmarker in turn, which lost that tracking: in
+  her zone she was found in 5 of 60 frames and never with the sign; with a landmarker per zone
+  in 43, 29 with the sign. Where signs were found anyway (the start of sign-started clips) the
+  two ways gave the same. Sprung: after the jump gymnasts walked behind the landing mat, feet
+  hidden and guessed at 0.64–0.65 against a floor line needing ≥ 0.65–0.66, or a coach stood by
+  the springboard; 26 of 64 clips ran on (up to 118 s) and the next gymnasts jumped during
+  them, without a clip of their own. The zone was redrawn several times, which forgets the
+  floor hints, and they rarely formed (feet right at the threshold). Upright counting as
+  standing (see Stopping) stopped those 26 after 4–12.5 s, 510 s less in all.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

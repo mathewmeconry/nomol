@@ -383,9 +383,18 @@ describe('stopping', () => {
     expect(events[1].time - events[0].time).toBeGreaterThanOrEqual(IDLE_MS);
   });
 
-  it('stops soon after the landing with a run-up from the side', () => {
-    const scene: Scene = (t) => [makePose({ x: 0.45, feetY: 0.9, lift: upAndDown(t) })];
-    const { events } = run(scene, LONG, { from: recording(0.45), runUp: 'left' });
+  it('stops soon after the landing with a run-up from the side, wherever the feet seem', () => {
+    // Tucked in the air until 1.5 s, then standing behind the landing mat: the feet are hidden
+    // and guessed well above the floor line.
+    function jump(t: number) {
+      if (t >= 1500) return makePose({ x: 0.45, feetY: 0.75 });
+      const pose = makePose({ x: 0.45, feetY: 0.9, lift: 0.2 });
+      const hipY = pose[LM.leftHip].y;
+      pose[LM.leftKnee] = { ...pose[LM.leftKnee], y: hipY };
+      pose[LM.rightKnee] = { ...pose[LM.rightKnee], y: hipY };
+      return pose;
+    }
+    const { events } = run((t) => [jump(t)], LONG, { from: recording(0.45), runUp: 'left' });
     expect(events[0]?.event).toEqual({ type: 'stop', reason: 'idle' });
     expect(events[0].time).toBeGreaterThanOrEqual(1500 + RUN_UP_IDLE_MS);
     expect(events[0].time).toBeLessThan(2000 + RUN_UP_IDLE_MS);

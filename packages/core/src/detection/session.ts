@@ -1,6 +1,6 @@
 import { distance, scalePose, torsoCenter, torsoLength, type Point, type Pose } from './pose';
 import { isStartSign } from './sign';
-import { isInZone, isOnFloor, scaleZone, zoneCenter, type Zone } from './zone';
+import { isInZone, isOnFloor, isUpright, scaleZone, zoneCenter, type Zone } from './zone';
 
 /** How long the start sign must be held. */
 export const SIGN_HOLD_MS = 1000;
@@ -20,6 +20,13 @@ export const IDLE_MS = 6000;
  * standing, the next gymnast had often run in and ended up in the same clip; on 14 Sprung clips
  * (November 2026, floor line put where people stood after landing) 2.5 s stopped 7 of them
  * after the landing, 6 s one.
+ *
+ * The jump being the only element, being upright counts as standing there, wherever the feet
+ * are: on November 20 2026 gymnasts stood behind the landing mat after the jump, their feet
+ * hidden and guessed just above the floor line, or a coach stood by the springboard; 26 of 64
+ * clips ran on (up to 118 s), and the next gymnasts jumped without a recording of their own.
+ * Upright, those 26 stopped 4–12.5 s into the clip (510 s less); the six earliest, checked by
+ * eye, with the gymnast standing after the landing or a passer-by who had set it off gone.
  */
 export const RUN_UP_IDLE_MS = 2500;
 /**
@@ -438,8 +445,10 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
       target: pose,
     };
   }
-  const lastElementAt = isOnFloor(pose, state.zone) ? state.lastElementAt : frame.time;
-  const idleMs = frame.runUp === 'left' || frame.runUp === 'right' ? RUN_UP_IDLE_MS : IDLE_MS;
+  const oneJump = frame.runUp === 'left' || frame.runUp === 'right';
+  const standing = oneJump ? isUpright(pose) : isOnFloor(pose, state.zone);
+  const lastElementAt = standing ? state.lastElementAt : frame.time;
+  const idleMs = oneJump ? RUN_UP_IDLE_MS : IDLE_MS;
   if (lastElementAt !== null && frame.time - lastElementAt >= idleMs) {
     return { state: initialSession, event: { type: 'stop', reason: 'idle' }, target: pose };
   }

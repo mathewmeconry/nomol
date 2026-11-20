@@ -1,15 +1,13 @@
 import {
-  LM,
   bodySize,
   distance,
   higherAnkleY,
-  hipCenter,
   scalePose,
   torsoCenter,
   torsoLength,
   type Pose,
 } from '../detection/pose';
-import { FLOOR_TOLERANCE, KNEES_BELOW_HIPS, type Zone } from '../detection/zone';
+import { FLOOR_TOLERANCE, isUpright, type Zone } from '../detection/zone';
 import type { Clip } from './clip';
 
 /**
@@ -29,8 +27,6 @@ const ELEMENT_MS = 300;
 const STILL_MS = 1000;
 /** Standing still: the torso centre stays within this many torso lengths. */
 const STILL_TORSOS = 1;
-/** Shoulders at least this many torso lengths above the hips: upright, not lying or upside down. */
-const UPRIGHT_TORSOS = 0.4;
 /**
  * Only someone about the gymnast's size at the start: in a busy hall the tracked pose sometimes
  * ends on someone further back (the next apparatus, people waiting), whose feet are higher in
@@ -39,16 +35,6 @@ const UPRIGHT_TORSOS = 0.4;
 const MAX_SIZE_CHANGE = 1.5;
 /** Recent hints per zone that a new one is compared with. */
 const MAX_HINTS = 5;
-
-function isUpright(pose: Pose): boolean {
-  const hip = hipCenter(pose);
-  const shoulderY = (pose[LM.leftShoulder].y + pose[LM.rightShoulder].y) / 2;
-  const higherKneeY = Math.min(pose[LM.leftKnee].y, pose[LM.rightKnee].y);
-  return (
-    higherKneeY - hip.y >= KNEES_BELOW_HIPS * bodySize(pose) &&
-    hip.y - shoulderY >= UPRIGHT_TORSOS * torsoLength(pose)
-  );
-}
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);

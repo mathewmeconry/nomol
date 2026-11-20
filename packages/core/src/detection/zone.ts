@@ -47,6 +47,20 @@ export function isOnFloor(pose: Pose, zone: Zone): boolean {
   );
 }
 
+/** Shoulders at least this many torso lengths above the hips: upright, not lying or upside down. */
+const UPRIGHT_TORSOS = 0.4;
+
+/** Standing or walking, wherever the feet are: knees below the hips, shoulders above them. */
+export function isUpright(pose: Pose): boolean {
+  const hip = hipCenter(pose);
+  const shoulderY = (pose[LM.leftShoulder].y + pose[LM.rightShoulder].y) / 2;
+  const higherKneeY = Math.min(pose[LM.leftKnee].y, pose[LM.rightKnee].y);
+  return (
+    higherKneeY - hip.y >= KNEES_BELOW_HIPS * bodySize(pose) &&
+    hip.y - shoulderY >= UPRIGHT_TORSOS * torsoLength(pose)
+  );
+}
+
 /** See `scalePose`: same conversion of x into image-height units. */
 export function scaleZone(zone: Zone, aspectRatio: number): Zone {
   return { ...zone, left: zone.left * aspectRatio, right: zone.right * aspectRatio };
