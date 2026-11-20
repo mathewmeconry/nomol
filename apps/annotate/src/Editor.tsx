@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react';
 import { cn } from 'cn';
+import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { Skeleton } from './Skeleton';
 import { KEYPOINT_NAMES, fromCandidate, swapSides } from './lib/keypoints';
 import type { Keypoint, Label, Task } from './lib/tasks';
@@ -18,6 +19,13 @@ type Drag =
   | { kind: 'pan'; clientX: number; clientY: number; view: Rect; moved: boolean };
 
 const VISIBILITY = ['nicht im Bild', 'verdeckt', 'sichtbar'];
+const LEGEND: [string, string][] = [
+  [LIMB_COLORS.leftArm, 'linker Arm'],
+  [LIMB_COLORS.leftLeg, 'linkes Bein'],
+  [LIMB_COLORS.rightArm, 'rechter Arm'],
+  [LIMB_COLORS.rightLeg, 'rechtes Bein'],
+  [LIMB_COLORS.body, 'Kopf und Rumpf'],
+];
 
 function initial(task: Task, label: Label | undefined): Keypoint[] {
   if (label && !label.discarded) return label.keypoints;
@@ -274,11 +282,24 @@ export function Editor({ task, label, onSave, onDiscard, onPrevious }: Props) {
         })}
       </div>
 
-      <p className="col-span-2 text-sm text-neutral-400">
-        {selected === null
-          ? 'Kein Punkt ausgewählt (Tab oder Punkt anklicken)'
-          : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
-      </p>
+      <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-400">
+        <p className="mr-auto">
+          {selected === null
+            ? 'Kein Punkt ausgewählt (Tab oder Punkt anklicken)'
+            : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
+        </p>
+        {LEGEND.map(([color, name]) => (
+          <span key={name} className="flex items-center gap-1.5">
+            <span className="size-3 rounded-full" style={{ background: color }} />
+            {name}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5">
+          <span className="size-3 rounded-full border-2 border-neutral-300" />
+          verdeckt
+        </span>
+        <span className="text-neutral-500">Seiten aus Sicht der Person</span>
+      </div>
     </div>
   );
 }

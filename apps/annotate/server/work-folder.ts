@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -68,14 +68,18 @@ async function handle(dir: string, req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-/** All labels in one response, so the tool knows where to continue. */
+/** All labels in one response, oldest first, so the tool knows where to continue and go back. */
 async function readLabels(dir: string) {
   const folder = resolve(dir, 'labels');
   const names = await readdir(folder).catch(() => []);
   const labels = await Promise.all(
     names
       .filter((name) => name.endsWith('.json'))
-      .map(async (name) => JSON.parse(await readFile(resolve(folder, name), 'utf8')) as unknown),
+      .map(async (name) => {
+        const file = resolve(folder, name);
+        const [content, info] = await Promise.all([readFile(file, 'utf8'), stat(file)]);
+        return { label: JSON.parse(content) as unknown, saved: info.mtimeMs };
+      }),
   );
-  return labels;
+  return labels.sort((a, b) => a.saved - b.saved).map((entry) => entry.label);
 }

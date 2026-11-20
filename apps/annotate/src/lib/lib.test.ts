@@ -1,8 +1,10 @@
 import { toCoco } from './coco';
 import { fromCandidate, swapSides } from './keypoints';
 import {
+  afterSave,
+  firstOpen,
   labellingOrder,
-  nextOpen,
+  previousSaved,
   tasksFileSchema,
   type Keypoint,
   type Label,
@@ -48,12 +50,23 @@ describe('tasks', () => {
     expect(order.map((t) => t.id)).toEqual(['test-hard', 'test-easy', 'train-hard']);
   });
 
-  it('continues with the next frame without a label, wrapping around', () => {
-    const order = [task('a', 'test', 0), task('b', 'test', 0), task('c', 'test', 0)];
-    expect(nextOpen(order, new Map([['b', label('b')]]), 0)).toBe(2);
-    expect(nextOpen(order, new Map([['c', label('c')]]), 1)).toBe(0);
+  it('continues with the first frame without a label', () => {
+    const order = [task('a', 'test', 0), task('b', 'test', 0)];
+    expect(firstOpen(order, new Map([['a', label('a')]]))).toBe('b');
     const all = new Map(order.map((t) => [t.id, label(t.id)]));
-    expect(nextOpen(order, all, 0)).toBe(-1);
+    expect(firstOpen(order, all)).toBeNull();
+  });
+
+  it('goes back in the order frames were saved, and forward again by saving', () => {
+    const saved = ['c', 'a', 'b'];
+    expect(previousSaved(saved, 'new')).toBe('b');
+    expect(previousSaved(saved, null)).toBe('b');
+    expect(previousSaved(saved, 'a')).toBe('c');
+    expect(previousSaved(saved, 'c')).toBe('c');
+    expect(previousSaved([], 'new')).toBe('new');
+    expect(afterSave(saved, 'a', 'new')).toBe('b');
+    expect(afterSave(saved, 'b', 'new')).toBe('new');
+    expect(afterSave(saved, 'new', 'next')).toBe('next');
   });
 });
 

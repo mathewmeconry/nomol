@@ -47,11 +47,23 @@ export function labellingOrder(tasks: Task[]) {
   );
 }
 
-/** The first task after `from` (wrapping around) that has no label yet, or -1. */
-export function nextOpen(order: Task[], labels: Map<string, Label>, from: number) {
-  for (let i = 1; i <= order.length; i++) {
-    const index = (from + i) % order.length;
-    if (!labels.has(order[index].id)) return index;
-  }
-  return -1;
+/** The first frame in the labelling order without a label, or null when all are done. */
+export function firstOpen(order: Task[], labels: Map<string, Label>) {
+  return order.find((task) => !labels.has(task.id))?.id ?? null;
+}
+
+/**
+ * P goes back through the frames in the order they were saved (`saved`, oldest first), not
+ * through the labelling order: that one changes as frames of new videos come in.
+ */
+export function previousSaved(saved: string[], current: string | null) {
+  const at = current === null ? -1 : saved.indexOf(current);
+  if (at === -1) return saved.at(-1) ?? current;
+  return saved[at - 1] ?? current;
+}
+
+/** After saving: from a frame gone back to, on to the one saved after it, else to `open`. */
+export function afterSave(saved: string[], id: string, open: string | null) {
+  const at = saved.indexOf(id);
+  return at === -1 ? open : (saved[at + 1] ?? open);
 }

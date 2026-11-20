@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Editor } from './Editor';
 import { toCoco } from './lib/coco';
 import {
+  afterSave,
+  firstOpen,
   labelSchema,
   labellingOrder,
-  nextOpen,
+  previousSaved,
   tasksFileSchema,
   type Keypoint,
   type Label,
@@ -61,7 +63,9 @@ export default function App() {
 function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map<string, Label> }) {
   const order = useMemo(() => labellingOrder(tasks), [tasks]);
   const [labels, setLabels] = useState(initialLabels);
-  const [index, setIndex] = useState(() => nextOpen(order, initialLabels, -1));
+  // Labels arrive oldest first, so going back works across reloads.
+  const [saved, setSaved] = useState(() => [...initialLabels.keys()]);
+  const [current, setCurrent] = useState(() => firstOpen(order, initialLabels));
   const [notice, setNotice] = useState('');
 
   async function store(label: Label) {
@@ -69,7 +73,8 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
       await put(`labels/${label.id}.json`, label);
       const next = new Map(labels).set(label.id, label);
       setLabels(next);
-      setIndex(nextOpen(order, next, index));
+      setCurrent(afterSave(saved, label.id, firstOpen(order, next)));
+      if (!saved.includes(label.id)) setSaved([...saved, label.id]);
       setNotice('');
     } catch (error) {
       setNotice((error as Error).message);
@@ -89,7 +94,7 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
     }
   }
 
-  const task = index >= 0 ? order[index] : undefined;
+  const task = tasks.find((t) => t.id === current);
   const times = [...labels.values()].map((l) => l.seconds);
   const average = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
   const progress = (set: Task['set']) => {
@@ -130,11 +135,18 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
           onDiscard={(keypoints: Keypoint[], seconds) =>
             store({ id: task.id, keypoints, discarded: true, seconds })
           }
-          onPrevious={() => setIndex((index - 1 + order.length) % order.length)}
+          onPrevious={() => setCurrent(previousSaved(saved, current))}
         />
       ) : (
         <Message>
-          Alle Bilder gelabelt. Mit P gehst du zurück, «COCO exportieren» schreibt die Dateien.
+          Alle Bilder gelabelt. «COCO exportieren» schreibt die Dateien.{' '}
+          <button
+            type="button"
+            onClick={() => setCurrent(previousSaved(saved, null))}
+            className="underline"
+          >
+            Zum letzten Bild
+          </button>
         </Message>
       )}
 
