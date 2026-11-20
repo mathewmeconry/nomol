@@ -488,6 +488,20 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   landing (seen in the browser with a looped clip); requiring visible knees instead dropped
   most blurred Sprung flights. Misdetected skeletons can still last longer (2 s in one phone
   export of someone waiting); their hints still come from where the gymnast stood.
+- Floor filmed from the side, Android, November 19 2026 (10 clips, sign starts, the queue at
+  the picture's left edge, a coach spotting next to the zone): only 2 clips were clean. The
+  gymnast was taken over by someone 1.65–2× larger in one frame: girls running past close to
+  the camera (one followed out of the picture mid-salto) and the coach, whose demonstrations
+  then counted as elements for 25 s. Hence `MAX_GROWTH` against two medians of her recent
+  sizes: against the largest recent size, partial skeletons where a runner overlapped the
+  gymnast let it climb to the runner in three frames (seen in the browser with the clip as
+  camera); against a 3 s median alone, Sprung runners coming towards the camera were lost.
+  Replayed through MediaPipe on 290 recordings (automatic starts from waiting, as in the app):
+  266 unchanged; better in 9 (coaches standing in front of the camera, passers-by, a rings
+  gymnast kept instead of a girl in the foreground), 2 no longer took the next gymnast's jump
+  at Sprung, 12 neutral, 1 worse (a girl sliding down a mat, stretched out, looked longer).
+  Still open: a gymnast standing half outside the picture is often not found, and tracking
+  hops between girls of the same size waiting side by side.
 - Skeleton timing: frames are stamped with the camera capture time; the recording's time 0
   accounts for delivery and detection latency, and poses are interpolated. Verified to line up
   within about a frame by re-detecting on the replay.

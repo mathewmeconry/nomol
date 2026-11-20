@@ -34,6 +34,20 @@ const MAX_GYMNAST_JUMP = 0.35;
  */
 const MAX_SIZE_CHANGE = 3;
 /**
+ * Growing, though, at most this factor over the median of the last `GROWTH_SIZES` sightings
+ * (about 3 s) or of the last `SEARCH_SIZES` (about 1 s), whichever is larger: a gymnast crouching
+ * on a mat for a second looked half as long and grew back as fast, a runner at Sprung grows
+ * steadily for a second or two coming towards the camera, and partial skeletons of someone
+ * running past made the largest recent sighting climb to theirs in three frames, too few to
+ * move a median. On the floor filmed from the side (November 19 2026) the gymnast
+ * was taken over by someone 1.65–2× larger in one frame: girls running past close to the
+ * camera, hiding her, and the coach next to her (~1.8× a girl), whose demonstrations then kept
+ * a clip running for 25 s. Replayed through MediaPipe on 290 recordings, it also stopped taking
+ * coaches standing in front of the camera and, at Sprung, the next gymnast's jump.
+ */
+const MAX_GROWTH = 1.5;
+const GROWTH_SIZES = 30;
+/**
  * Torso centre closer than this many torso lengths to the left or right edge: leaving the
  * picture. Someone walking out was 0.3–0.5 torso lengths from the edge, a gymnast landing near
  * it ~1. Nobody leaves in a handstand, so the size must stay closer too: the girl who had been
@@ -154,7 +168,7 @@ type Recording = SignState & {
    * the rest of a 30 s clip.
    */
   lastElementAt: number | null;
-  /** Torso lengths of the last sightings (`SEARCH_SIZES`), for `gymnastArea`. */
+  /** Torso lengths of the last sightings (`GROWTH_SIZES`), for `MAX_GROWTH` and `gymnastArea`. */
   sizes: number[];
   /** Frames in a row the gymnast wasn't found in. */
   missed: number;
@@ -388,6 +402,8 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
     ? MAX_JUMP
     : MAX_GYMNAST_JUMP + (SEARCH_GROWTH_PER_S * (frame.time - state.lastSeen)) / 1000;
   const maxSizeChange = atSide ? MAX_SIZE_CHANGE_AT_SIDE : MAX_SIZE_CHANGE;
+  const maxSize =
+    MAX_GROWTH * Math.max(median(state.sizes), median(state.sizes.slice(-SEARCH_SIZES)));
   const claimed = claimedByOthers(state.others, frame.poses, state.target);
   const taken = new Set(claimed.values());
   const candidates = frame.poses.filter((pose) => {
@@ -395,7 +411,8 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
     return (
       !taken.has(pose) &&
       distance(torsoCenter(pose), state.target) <= reach &&
-      Math.max(size / state.size, state.size / size) <= maxSizeChange
+      Math.max(size / state.size, state.size / size) <= maxSizeChange &&
+      size <= maxSize
     );
   });
   if (candidates.length === 0) {
@@ -436,7 +453,7 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
       lastSeen: frame.time,
       others,
       lastElementAt,
-      sizes: [...state.sizes, torsoLength(pose)].slice(-SEARCH_SIZES),
+      sizes: [...state.sizes, torsoLength(pose)].slice(-GROWTH_SIZES),
       missed: 0,
     },
     event: null,
@@ -459,9 +476,8 @@ function stepRecording(state: Recording, frame: Frame): StepResult {
  */
 export function gymnastArea(state: SessionState, aspectRatio: number): Zone | null {
   if (state.kind === 'idle') return null;
-  const sizes = [...state.sizes].sort((a, b) => a - b);
   const jitter = state.missed > 0 ? SEARCH_JITTER[state.missed % SEARCH_JITTER.length] : 1;
-  const reach = SEARCH_TORSOS * sizes[Math.floor(sizes.length / 2)] * jitter;
+  const reach = SEARCH_TORSOS * median(state.sizes.slice(-SEARCH_SIZES)) * jitter;
   const { x, y } = state.target;
   return {
     left: (x - reach) / aspectRatio,
@@ -469,6 +485,11 @@ export function gymnastArea(state: SessionState, aspectRatio: number): Zone | nu
     right: (x + reach) / aspectRatio,
     bottom: y + reach,
   };
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 /**

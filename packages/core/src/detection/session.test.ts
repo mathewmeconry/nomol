@@ -520,6 +520,47 @@ describe('stopping', () => {
     expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.45, 2);
   });
 
+  it('does not switch to someone much larger running past close to the camera', () => {
+    // From a floor recording: a girl running past close to the camera hid the small gymnast
+    // waiting in the zone and was followed out of the picture instead.
+    // 1.9× her size, as measured.
+    const runner = (t: number) => shrink(makePose({ x: 0.2 + (0.6 * t) / 1000, feetY: 0.9 }), 1.9);
+    // Detection only looks around the gymnast: the runner is first found in the frame she hides
+    // the gymnast in.
+    const scene: Scene = (t) =>
+      Math.abs(runner(t)[LM.leftHip].x - 0.45) < 0.1
+        ? [runner(t)]
+        : [makePose({ x: 0.45, feetY: 0.9 })];
+    // While she is hidden.
+    const { state } = run(scene, 400, { from: recording(0.45) });
+    expect(state.kind === 'recording' && state.target.x).toBeCloseTo(0.45, 2);
+  });
+
+  it('keeps the gymnast standing up after crouching', () => {
+    // From a recording on an inclined mat: crouched, her torso looked half as long for a while.
+    const scene: Scene = (t) => {
+      const pose = makePose({ x: 0.45, feetY: 0.9 });
+      return [t > 1500 && t < 2500 ? shrink(pose, 0.5) : pose];
+    };
+    const { state } = run(scene, 3500, { from: recording(0.45), fps: 10 });
+    expect(state.kind === 'recording' && state.missed).toBe(0);
+  });
+
+  it('does not grow onto someone larger through partial skeletons in between', () => {
+    // From the same floor recording in the app: where the runner overlapped the gymnast,
+    // skeletons a little larger than her came first, then the runner's own.
+    const growth = [1.15, 1.45, 2, 2.4];
+    const scene: Scene = (t) => {
+      const step = Math.floor((t - 1000) / 100);
+      const pose = makePose({ x: 0.45, feetY: 0.9 });
+      return [step < 0 ? pose : shrink(pose, growth[Math.min(step, growth.length - 1)])];
+    };
+    const size = (state: SessionState) => state.kind === 'recording' && state.size;
+    const before = size(run(scene, 0, { armed: true }).state) as number;
+    const { state } = run(scene, 1400, { from: recording(0.45), fps: 10 });
+    expect(size(state)).toBeLessThan(1.5 * before);
+  });
+
   it('keeps recording while a swing leaves the picture at the side and comes back', () => {
     // From a rings video: in the air at the left edge, back 0.4 s later 0.26 further in.
     const scene: Scene = (t) =>
@@ -588,7 +629,7 @@ describe('gymnastArea', () => {
 
   it('keeps its size when a skeleton far too large is taken for the gymnast once', () => {
     const before = run(standing, 1000, { from: recording() }).state;
-    const large = run(() => [shrink(makePose({ x: 0.45, feetY: 0.9 }), 2)], 0, {
+    const large = run(() => [shrink(makePose({ x: 0.45, feetY: 0.9 }), 1.4)], 0, {
       from: before,
       start: 1100,
     }).state;
