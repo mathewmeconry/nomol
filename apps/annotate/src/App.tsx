@@ -129,6 +129,12 @@ function Labelling({ tasks, initialLabels }: { tasks: Task[]; initialLabels: Map
             {task.video} · {task.time.toFixed(1)} s · Uneinigkeit {task.disagreement.toFixed(2)}
             {labels.get(task.id)?.discarded && ' · verworfen'}
             {task.appMissed && <span className="text-amber-300"> · App ohne Skelett</span>}
+            {task.element && (
+              <span className="text-sky-300">
+                {' '}
+                · {task.element === 'upside down' ? 'kopfüber' : 'seitlich'}
+              </span>
+            )}
           </span>
         )}
         <span className="ml-auto text-amber-300">{notice}</span>

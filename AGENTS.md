@@ -586,7 +586,12 @@ It only runs locally and is never deployed: the frames show people, so the work 
   `--app-gaps` it reads each clip's `.nomol.txt` and adds up to 8 frames where the app's replay
   skeleton was missing although the gymnast was seen within 1.5 s, taking the person nearest
   that sighting (0.3 s from frames already there; clips are short and full at 1 s), and marks
-  every frame in such a gap `appMissed` (the tool shows "App ohne Skelett"). It writes
+  every frame in such a gap `appMissed` (the tool shows "App ohne Skelett"). Sampled every
+  0.5 s and kept 1 s apart, only 3 % of the frames showed someone upside down (a salto lasts
+  ~0.3 s), so `--elements` follows the gymnast at 10 frames per second (YOLOX-m every 0.5 s near
+  the app's sighting, in between a box from their own skeleton, RTMPose-m for the orientation)
+  and adds up to 6 upside-down, then sideways moments per clip, 0.3 s apart (`element`; the tool
+  shows "kopfüber" or "seitlich"). It writes
   `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. The models take
   ~0.45 s per sampled frame on the laptop's CPU (i7-1280P), so a 10-minute video takes about 15
   minutes; `--step` samples less. The tool reads `tasks.json` on every reload, so labelling can

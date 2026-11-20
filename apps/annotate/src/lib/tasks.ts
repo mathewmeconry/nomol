@@ -18,6 +18,8 @@ const taskSchema = z.object({
   disagreement: z.number(),
   /** The app's replay skeleton was missing at this frame (prepare.py --app-gaps). */
   appMissed: z.boolean().optional(),
+  /** Picked as a moment of an element (prepare.py --elements). */
+  element: z.enum(['sideways', 'upside down']).optional(),
   /** Best agreeing first; keypoints are x, y and the model's score. */
   candidates: z.array(z.object({ name: z.string(), keypoints: z.array(point).length(17) })),
 });

@@ -11,8 +11,13 @@ With --app-gaps it adds, per clip, frames where the app's replay skeleton (from 
 .nomol.txt) was missing although the gymnast was seen within 1.5 s, the person nearest that
 sighting: where the app shows nothing, the frames that matter most. They are marked appMissed.
 
+With --elements it follows the gymnast through each clip at 10 frames per second and adds up
+to 6 moments where they are upside down or sideways: sampled every 0.5 s, a salto (upside down
+for ~0.3 s) is mostly missed. They are marked with their element.
+
     uv run prepare.py ~/nomol-annotate
     uv run prepare.py ~/nomol-annotate --app-gaps
+    uv run prepare.py ~/nomol-annotate --elements
 """
 
 import argparse
@@ -33,6 +38,9 @@ from rtmlib import YOLOX, RTMPose
 # frames of two gym clips; the detector took most of the time.
 DET_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
 POSE_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629.zip"
+# Following a gymnast at 10 frames per second only needs their orientation: RTMPose-m is ~4×
+# faster than -x.
+FOLLOW_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip"
 MP_MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
 
 # MediaPipe's 33 landmarks in COCO's order of 17 keypoints.
@@ -68,6 +76,14 @@ class Models:
                 num_poses=2,
             )
         )
+
+    def follow_pose(self, frame, box):
+        """The quick pose of the person in `box`: 17×2 points and their scores."""
+        if not hasattr(self, "follower"):
+            self.follower = RTMPose(FOLLOW_MODEL, model_input_size=(192, 256))
+        x, y, w, h = box
+        points, scores = self.follower(frame, bboxes=[[x, y, x + w, y + h]])
+        return points[0], scores[0]
 
     def people(self, frame):
         """Everyone the detector finds, as x, y, width, height."""
@@ -203,12 +219,8 @@ def export_of(video: Path):
     return json.loads(path.read_text()) if path.exists() else None
 
 
-def app_gaps(export):
-    """The times (s, every 0.1 s) where the app's replay skeleton had no usable pose although the
-    gymnast was seen within 1.5 s, each with the torso centre (normalized) of that sighting."""
-
-    def usable(pose):
-        return sum(pose[i]["visibility"] > 0.5 for i in APP_BODY) >= 8
+def sightings(export):
+    """Where the app saw the gymnast: (time in ms, torso centre normalized), live or replay."""
 
     def torso(pose):
         points = [pose[i] for i in (11, 12, 23, 24)]
@@ -216,9 +228,19 @@ def app_gaps(export):
             return None
         return (sum(p["x"] for p in points) / 4, sum(p["y"] for p in points) / 4)
 
-    covered = [e["time"] for e in export["skeleton"] if usable(e["pose"])]
     seen = [(e["time"], torso(e["pose"])) for e in export["frames"] + export["skeleton"]]
-    seen = [(t, c) for t, c in seen if c]
+    return [(t, c) for t, c in seen if c]
+
+
+def app_gaps(export):
+    """The times (s, every 0.1 s) where the app's replay skeleton had no usable pose although the
+    gymnast was seen within 1.5 s, each with the torso centre (normalized) of that sighting."""
+
+    def usable(pose):
+        return sum(pose[i]["visibility"] > 0.5 for i in APP_BODY) >= 8
+
+    covered = [e["time"] for e in export["skeleton"] if usable(e["pose"])]
+    seen = sightings(export)
     gaps = []
     for slot in range(int(export["durationMs"] // 100)):
         t = slot * 100 + 50
@@ -263,6 +285,93 @@ def sample_gaps(models, video: Path, gaps, count: int, gap: float, taken, seed: 
         candidates, score = disagreement(models.candidates(frame, box), box)
         samples.append({"time": time, "box": box, "candidates": candidates, "disagreement": score})
     return samples
+
+
+def orientation(points):
+    """Upright, sideways or upside down, by the angle from the hips' to the shoulders' middle."""
+    sx, sy = (points[5] + points[6]) / 2
+    hx, hy = (points[11] + points[12]) / 2
+    angle = abs(np.degrees(np.arctan2(sx - hx, hy - sy)))
+    return "upright" if angle < 35 else "upside down" if angle > 135 else "sideways"
+
+
+def follow(models, video: Path, export, step: float):
+    """Follows the gymnast through the clip every `step` s: the person the app saw (or, without
+    a sighting, the largest), detected anew every 0.5 s and in between boxed by their own
+    skeleton, so a salto doesn't need the detector. Returns their box and orientation."""
+    seen = sightings(export) if export else []
+    records = []
+    box = None
+    detected = -1.0
+    next_time = 0.0
+    for time, frame in frames(video):
+        if time < next_time:
+            continue
+        next_time = time + step
+        height, width = frame.shape[:2]
+        if box is None or time - detected >= 0.5:
+            detected = time
+            people = models.people(frame)
+            near = min(seen, key=lambda s: abs(s[0] - time * 1000), default=None)
+            if box is not None:
+                target = (box[0] + box[2] / 2, box[1] + box[3] / 2)
+            elif near and abs(near[0] - time * 1000) <= 1500:
+                target = (near[1][0] * width, near[1][1] * height)
+            else:
+                target = None
+            if target is None:
+                box = max(people, key=lambda b: b[2] * b[3], default=None)
+            else:
+
+                def offset(b):
+                    return np.hypot(b[0] + b[2] / 2 - target[0], b[1] + b[3] / 2 - target[1])
+
+                match = min(people, key=offset, default=None)
+                if match is not None and offset(match) <= 0.75 * max(match[2], match[3]):
+                    box = match
+        if box is None:
+            continue
+        points, scores = models.follow_pose(frame, box)
+        if np.mean(scores[[0] + list(range(5, 17))]) < 0.3:
+            box = None
+            continue
+        sure = points[scores >= 0.3]
+        x0, y0 = sure.min(axis=0)
+        x1, y1 = sure.max(axis=0)
+        pad = 0.2 * max(x1 - x0, y1 - y0)
+        x0, y0 = max(x0 - pad, 0), max(y0 - pad, 0)
+        x1, y1 = min(x1 + pad, width), min(y1 + pad, height)
+        box = [float(x0), float(y0), float(x1 - x0), float(y1 - y0)]
+        if max(box[2], box[3]) < height * 0.05:
+            box = None
+            continue
+        records.append({"time": time, "box": box, "element": orientation(points)})
+    return records
+
+
+def choose_elements(records, count: int, taken):
+    """Up to `count` moments of an element, upside down first, then sideways, at least 0.3 s
+    apart and from frames already taken (a salto is upside down for only ~0.3 s)."""
+    chosen = []
+    for kind in ("upside down", "sideways"):
+        for r in records:
+            if len(chosen) >= count:
+                break
+            if r["element"] == kind and all(abs(r["time"] - t) >= 0.3 for t in taken + [c["time"] for c in chosen]):
+                chosen.append(r)
+    return sorted(chosen, key=lambda r: r["time"])
+
+
+def with_candidates(models, video: Path, chosen):
+    """Computes the full candidates for chosen moments, at the frame of each."""
+    wanted = list(chosen)
+    for time, frame in frames(video):
+        if not wanted:
+            break
+        if time >= wanted[0]["time"] - 0.001:
+            s = wanted.pop(0)
+            s["candidates"], s["disagreement"] = disagreement(models.candidates(frame, s["box"]), s["box"])
+    return [s for s in chosen if "candidates" in s]
 
 
 def crop_rect(box, frame_shape):
@@ -325,7 +434,8 @@ def add_tasks(data, work: Path, split: str, video: Path, chosen, app_missed: boo
                     if f"{task_id}_{offset:+.1f}.jpg" not in missing
                 ],
                 "disagreement": round(s["disagreement"], 4),
-                "appMissed": app_missed,
+                "appMissed": s.get("appMissed", app_missed),
+                **({"element": s["element"]} if "element" in s else {}),
                 "candidates": [
                     {"name": name, "keypoints": [[round(float(v), 1 if k < 2 else 3) for k, v in enumerate(p)] for p in points]}
                     for name, points in s["candidates"]
@@ -342,11 +452,16 @@ def main():
         action="store_true",
         help="add frames where the app's replay skeleton was missing (reads each clip's .nomol.txt)",
     )
-    parser.add_argument("--per-video", type=int, help="frames to keep per video (15, with --app-gaps 8)")
+    parser.add_argument(
+        "--elements",
+        action="store_true",
+        help="add moments where the gymnast is sideways or upside down (follows them at 10 per second)",
+    )
+    parser.add_argument("--per-video", type=int, help="frames to keep per video (15, --app-gaps 8, --elements 6)")
     parser.add_argument("--step", type=float, default=0.5, help="seconds between sampled frames")
     parser.add_argument("--gap", type=float, default=1.0, help="minimum seconds between kept frames")
     args = parser.parse_args()
-    per_video = args.per_video or (8 if args.app_gaps else 15)
+    per_video = args.per_video or (8 if args.app_gaps else 6 if args.elements else 15)
 
     work = args.work.expanduser().resolve()
     (work / "frames").mkdir(parents=True, exist_ok=True)
@@ -360,7 +475,7 @@ def main():
         for path in sorted((work / "videos" / split).glob("*"))
         if path.suffix.lower() in VIDEO_EXTENSIONS
     ]
-    done = data.setdefault("gapVideos" if args.app_gaps else "videos", [])
+    done = data.setdefault("gapVideos" if args.app_gaps else "elementVideos" if args.elements else "videos", [])
     todo = [(split, path) for split, path in videos if f"{split}/{path.name}" not in done]
     if not todo:
         print(f"No new videos in {work / 'videos'}/test or /train.", file=sys.stderr)
@@ -381,6 +496,16 @@ def main():
                 task["appMissed"] = any(abs(task["time"] - t) <= 0.06 for t, _ in gaps)
             taken = [t["time"] for t in existing]
             chosen = sample_gaps(models, video, gaps, per_video, args.gap, taken, video.name)
+        elif args.elements:
+            export = export_of(video)
+            taken = [t["time"] for t in data["tasks"] if t["video"] == f"{split}/{video.name}"]
+            records = follow(models, video, export, 0.1)
+            chosen = with_candidates(models, video, choose_elements(records, per_video, taken))
+            gaps = [t for t, _ in app_gaps(export)] if export else []
+            for s in chosen:
+                s["appMissed"] = any(abs(s["time"] - t) <= 0.06 for t in gaps)
+            kinds = {k: sum(r["element"] == k for r in records) for k in ("upright", "sideways", "upside down")}
+            print(f"  followed {len(records)} moments: {kinds}", file=sys.stderr)
         else:
             chosen = choose(sample(models, video, args.step), per_video, args.gap, video.name)
         add_tasks(data, work, split, video, chosen, args.app_gaps)
