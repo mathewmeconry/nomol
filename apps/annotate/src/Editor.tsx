@@ -106,6 +106,8 @@ export function Editor({
   const [keypoints, setKeypoints] = useState(() => initial(task, label));
   const [history, setHistory] = useState<Keypoint[][]>([]);
   const [selected, setSelected] = useState<number | null>(null);
+  /** The point just clicked in while setting points one by one: H right after hides it. */
+  const [lastPlaced, setLastPlaced] = useState<number | null>(null);
   const [chosen, setChosen] = useState<number | null>(label ? null : 0);
   const crop = { x: task.crop[0], y: task.crop[1], w: task.crop[2], h: task.crop[3] };
   const [view, setView] = useState<Rect>(crop);
@@ -184,8 +186,12 @@ export function Editor({
         event.preventDefault();
         const step = event.shiftKey ? 16 : 1;
         setSelected((s) => (s === null ? (event.shiftKey ? 16 : 0) : (s + step) % 17));
-      } else if (key === 'h' && selected !== null) toggleHidden(selected);
-      else if ((key === 'delete' || key === 'backspace') && selected !== null) {
+      } else if (key === 'h') {
+        // While points are set one by one the selection has moved on to the next missing one.
+        const waiting = selected === null || keypoints[selected][2] === 0;
+        if (waiting && lastPlaced !== null) toggleHidden(lastPlaced);
+        else if (selected !== null) toggleHidden(selected);
+      } else if ((key === 'delete' || key === 'backspace') && selected !== null) {
         const [x, y] = keypoints[selected];
         change(update(selected, [x, y, 0]));
       } else if (key.startsWith('arrow') && selected !== null) {
@@ -263,6 +269,7 @@ export function Editor({
       if (!placed) {
         const missing = next.findIndex(([, , v], i) => v === 0 && i > selected);
         setSelected(missing === -1 ? null : missing);
+        setLastPlaced(selected);
       }
     }
   }
@@ -270,6 +277,7 @@ export function Editor({
   function clearAll() {
     change(keypoints.map(([x, y]): Keypoint => [x, y, 0]));
     setSelected(0);
+    setLastPlaced(null);
     setChosen(null);
   }
 
@@ -386,7 +394,10 @@ export function Editor({
           {selected === null
             ? 'Kein Punkt ausgewählt (Tab oder Punkt anklicken)'
             : keypoints[selected][2] === 0
-              ? `${KEYPOINT_NAMES[selected]}: ins Bild klicken zum Setzen, Tab überspringt`
+              ? `${KEYPOINT_NAMES[selected]}: ins Bild klicken zum Setzen, Tab überspringt` +
+                (lastPlaced === null
+                  ? ''
+                  : `, H: ${KEYPOINT_NAMES[lastPlaced]} ${keypoints[lastPlaced][2] === 1 ? 'sichtbar' : 'verdeckt'}`)
               : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
         </p>
         {LEGEND.map(([color, name, points]) => (
