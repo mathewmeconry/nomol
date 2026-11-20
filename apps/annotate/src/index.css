@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+
+html,
+body {
+  @apply bg-neutral-950 text-neutral-200;
+  color-scheme: dark;
+}

@@ -1,0 +1,12 @@
+[project]
+name = "nomol-annotate-prepare"
+version = "0.1.0"
+description = "Picks frames worth labelling for apps/annotate and computes skeleton candidates"
+requires-python = "==3.12.*"
+dependencies = [
+    "mediapipe>=1.2.3",
+    "numpy>=2.5",
+    "onnxruntime>=1.32",
+    "opencv-python-headless>=5.1",
+    "rtmlib>=0.0.16",
+]

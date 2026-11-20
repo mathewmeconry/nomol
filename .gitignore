@@ -28,6 +28,10 @@ coverage/
 *.apk
 *.aab
 
+# The labelling tool's frame preparation (uv)
+/apps/annotate/prepare/.venv/
+__pycache__/
+
 # React Router
 .react-router/
 /apps/*/build/

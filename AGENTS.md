@@ -117,8 +117,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   Shared pure logic belongs in `packages/core` so web and native stay in sync; it is imported as
   TypeScript source (`@nomol/core/detection/session`, no build step) and must not use browser or
   React Native APIs. Run the scripts from the root: they cover the whole workspace (`pnpm dev`,
-  `pnpm build` and `pnpm preview` run the web app). Each app has its own React (web 19.3.1,
-  native 19.3.0 as React Native 0.88 requires).
+  `pnpm build` and `pnpm preview` run the web app). Each app has its own React (web and
+  annotate 19.3.1, native 19.3.0 as React Native 0.88 requires). `apps/annotate`
+  (`@nomol/annotate`) is a local labelling tool, see "Labelling training data".
 - Android app (`apps/native`, `ch.nomol.app`): Expo SDK 58, React Native 0.88, TypeScript strict,
   react-native-vision-camera 5 (Nitro modules). The live screen: camera preview,
   start mode, start zone editor, settings (camera/lens, "Weitwinkel" = the camera's `minZoom`
@@ -348,6 +349,12 @@ shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` 
 `HybridFileShare.kt`), JVM unit tests in `android/src/test/`, model download in
 `android/build.gradle`.
 
+`apps/annotate/` (local labelling tool): `prepare/prepare.py` frames and candidates,
+`server/work-folder.ts` the work folder over the dev server, `src/Editor.tsx` the frame with the
+skeleton to correct, candidates and neighbours, `src/App.tsx` loading, order, saving and export,
+`src/lib/` the task and label format, keypoints (sides, bones in Nomol's colours) and the COCO
+export.
+
 `apps/web/app/` (paths below are relative to it):
 
 - `lib/detection/`: MediaPipe itself: `pose-detector.client.ts` (models, lite fallback) talking
@@ -520,6 +527,33 @@ replay skeleton (~10 per second) in the same 33-point layout, with MediaPipe's v
 recorded before November 2026 (see `appVersion`) have RTMPose's instead, where landmarks it
 doesn't have (hands, feet details) and unsure keypoints have visibility 0. It may be partial if
 exported before it finished. Version 1 had no `skeleton`, version 2 no `appVersion`, `startReason`, `runUp`.
+
+## Labelling training data
+
+The replay skeleton is barely usable yet. To measure it and to fine-tune a pose model (e.g.
+RTMPose) on gymnastics, frames are labelled by hand with `apps/annotate` (COCO's 17 keypoints).
+It only runs locally and is never deployed: the frames show people, so the work folder
+(`ANNOTATE_DIR`, default `~/nomol-annotate`) lives outside the repo.
+
+- Videos go into `<work>/videos/test/` and `<work>/videos/train/`, split by video so no clip is
+  in both. Footage must be licensed for it (own clips with consent, Creative Commons,
+  Pexels/Pixabay); YouTube's terms forbid downloading other videos.
+- `apps/annotate/prepare/prepare.py` (Python 3.12 via `uv run prepare.py <work>`, CPU only)
+  samples each new video every 0.5 s, takes the largest person (YOLOX-x) and computes candidates:
+  RTMPose-x upright and turned 180°, MediaPipe heavy upright and turned 90°, 180° and 270° (in
+  views around the person, like the replay skeleton). Per video it keeps 15 frames at least 1 s
+  apart: two thirds where the candidates disagree most (the best candidate's median distance to
+  the others), a third at random, so the test set isn't only the hardest frames. It writes
+  `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. ~3 s per sampled
+  frame on the laptop's CPU, so a 10-minute video takes about an hour; `--step` samples less.
+- `pnpm annotate` (port 5174) serves the work folder through a Vite plugin
+  (`server/work-folder.ts`, only labels and COCO exports are written) and stores each frame's
+  label as `labels/<id>.json`, so it resumes after a reload. Test set first, most disputed frames
+  first. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
+  points are dragged, or selected (Tab) and placed with a click. Hidden points (H) are COCO's
+  visibility 1, points not in the picture (Del) 0. "COCO exportieren" writes `coco_test.json` and
+  `coco_train.json` with the labelled person per frame (fine for top-down models trained on
+  person crops; others in the picture are not labelled).
 
 ## Testing in a browser
 

@@ -12,6 +12,7 @@
     "preview": "pnpm --filter @nomol/web preview",
     "android:build": "pnpm --filter @nomol/native build",
     "android:install": "pnpm --filter @nomol/native install:apk",
+    "annotate": "pnpm --filter @nomol/annotate dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint --max-warnings=0",
     "lint:fix": "eslint --max-warnings=0 --fix",

@@ -1,0 +1,57 @@
+import { z } from 'zod';
+
+const point = z.tuple([z.number(), z.number(), z.number()]);
+const rect = z.tuple([z.number(), z.number(), z.number(), z.number()]);
+
+/** One frame to label, as written by prepare.py. Coordinates are frame pixels. */
+const taskSchema = z.object({
+  id: z.string(),
+  set: z.enum(['test', 'train']),
+  video: z.string(),
+  time: z.number(),
+  image: z.string(),
+  width: z.number(),
+  height: z.number(),
+  box: rect,
+  crop: rect,
+  context: z.array(z.object({ offset: z.number(), image: z.string() })),
+  disagreement: z.number(),
+  /** Best agreeing first; keypoints are x, y and the model's score. */
+  candidates: z.array(z.object({ name: z.string(), keypoints: z.array(point).length(17) })),
+});
+export type Task = z.infer<typeof taskSchema>;
+
+export const tasksFileSchema = z.object({ tasks: z.array(taskSchema) });
+
+/** A keypoint as COCO stores it: x, y and 0 = not in the picture, 1 = hidden, 2 = visible. */
+export type Keypoint = [x: number, y: number, v: 0 | 1 | 2];
+
+export const labelSchema = z.object({
+  id: z.string(),
+  keypoints: z.array(z.tuple([z.number(), z.number(), z.literal([0, 1, 2])])).length(17),
+  /** Too blurred or the wrong person: left out of the export. */
+  discarded: z.boolean(),
+  /** Time spent on the frame, to see whether labelling gets faster. */
+  seconds: z.number(),
+});
+export type Label = z.infer<typeof labelSchema>;
+
+/**
+ * The order to label in: the test set first, so stopping early still leaves something to measure
+ * with, and in each set the frames where the models disagree most.
+ */
+export function labellingOrder(tasks: Task[]) {
+  return [...tasks].sort(
+    (a, b) =>
+      Number(a.set === 'train') - Number(b.set === 'train') || b.disagreement - a.disagreement,
+  );
+}
+
+/** The first task after `from` (wrapping around) that has no label yet, or -1. */
+export function nextOpen(order: Task[], labels: Map<string, Label>, from: number) {
+  for (let i = 1; i <= order.length; i++) {
+    const index = (from + i) % order.length;
+    if (!labels.has(order[index].id)) return index;
+  }
+  return -1;
+}
