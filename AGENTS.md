@@ -523,6 +523,14 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   mostly missing rather than wrong, i.e. the gymnast isn't found (MediaPipe's detector wants an
   upright, face-like view; the replay works on 640 px stills). A separate person detector
   (YOLOX finds upside-down gymnasts) and full-resolution frames are the levers to measure first.
+- Measured against 332 hand-labelled test frames (25 clips, November 21 2026, `measure.py`;
+  nose and 12 body points within 10 % of the person's size): the app's replay skeleton was there
+  in 24 % of the frames and hit 19 % of the points (where it was there 60 %), the live poses
+  66 % / 43 %. On the person found by YOLOX-m in the full-resolution frame, RTMPose-x upright
+  hit 96 % (found 99 %), MediaPipe heavy's most confident turned view 67 % (82 %). The labels
+  started from these candidates, so they are favoured; on the 47 frames where the label differs
+  from every candidate RTMPose-x still hit 81 %, MediaPipe 46 %. Only frames where YOLOX found
+  someone are in the set, and 13 of them are upside down, too few to judge those.
 - Floor and Sprung, Android, November 20 2026 (122 clips on the phone, 64 at Sprung, ~30 on the
   floor track with a zone at each end; failed signs and missed triggers leave no clip, so they
   were found through button starts and long clips). Floor: in button-started clips a girl was
@@ -582,7 +590,9 @@ It only runs locally and is never deployed: the frames show people, so the work 
   `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. The models take
   ~0.45 s per sampled frame on the laptop's CPU (i7-1280P), so a 10-minute video takes about 15
   minutes; `--step` samples less. The tool reads `tasks.json` on every reload, so labelling can
-  start while later videos are prepared. Its Iris Xe through WebGPU in the browser was barely
+  start while later videos are prepared. `measure.py <work>` scores the app's skeletons (from
+  the exports) and the candidates against the labels of the test set (see Detection notes). Its
+  Iris Xe through WebGPU in the browser was barely
   faster (YOLOX-x 533 vs ~600 ms, RTMPose-x 130 vs 154 ms), so this stays on the CPU.
 - `pnpm annotate` (port 5174) serves the work folder through a Vite plugin
   (`server/work-folder.ts`, only labels and COCO exports are written) and stores each frame's
