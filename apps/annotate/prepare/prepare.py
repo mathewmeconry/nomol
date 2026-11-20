@@ -24,7 +24,9 @@ import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 from rtmlib import YOLOX, RTMPose
 
-DET_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_x_8xb8-300e_humanart-a39d44ed.zip"
+# YOLOX-m: 3× faster than YOLOX-x on the laptop's CPU and picked the same person in 32 of 35
+# frames of two gym clips; the detector took most of the time.
+DET_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
 POSE_MODEL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629.zip"
 MP_MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
 

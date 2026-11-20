@@ -539,13 +539,16 @@ It only runs locally and is never deployed: the frames show people, so the work 
   in both. Footage must be licensed for it (own clips with consent, Creative Commons,
   Pexels/Pixabay); YouTube's terms forbid downloading other videos.
 - `apps/annotate/prepare/prepare.py` (Python 3.12 via `uv run prepare.py <work>`, CPU only)
-  samples each new video every 0.5 s, takes the largest person (YOLOX-x) and computes candidates:
+  samples each new video every 0.5 s, takes the largest person (YOLOX-m) and computes candidates:
   RTMPose-x upright and turned 180°, MediaPipe heavy upright and turned 90°, 180° and 270° (in
   views around the person, like the replay skeleton). Per video it keeps 15 frames at least 1 s
   apart: two thirds where the candidates disagree most (the best candidate's median distance to
   the others), a third at random, so the test set isn't only the hardest frames. It writes
-  `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. ~3 s per sampled
-  frame on the laptop's CPU, so a 10-minute video takes about an hour; `--step` samples less.
+  `tasks.json`, the frames whole and their neighbours (±0.1, ±0.2 s) as crops. The models take
+  ~0.45 s per sampled frame on the laptop's CPU (i7-1280P), so a 10-minute video takes about 15
+  minutes; `--step` samples less. The tool reads `tasks.json` on every reload, so labelling can
+  start while later videos are prepared. Its Iris Xe through WebGPU in the browser was barely
+  faster (YOLOX-x 533 vs ~600 ms, RTMPose-x 130 vs 154 ms), so this stays on the CPU.
 - `pnpm annotate` (port 5174) serves the work folder through a Vite plugin
   (`server/work-folder.ts`, only labels and COCO exports are written) and stores each frame's
   label as `labels/<id>.json`, so it resumes after a reload. Test set first, most disputed frames
