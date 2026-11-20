@@ -203,6 +203,7 @@ export function Editor({
       else if (key === 'p') onPrevious();
       else if (key === 'v') onNextDiscarded();
       else if (key === 'o') onOverview();
+      else if (key === 'c') clearAll();
       else if (key === 'r') setView(crop);
       else if (key === 'escape') setSelected(null);
     }
@@ -254,9 +255,22 @@ export function Editor({
     // A click beside the skeleton puts the selected point there.
     if (current?.kind === 'pan' && !current.moved && selected !== null) {
       const { x, y } = toImage(event);
-      const v = keypoints[selected][2] || 2;
-      change(update(selected, [x, y, v]));
+      const placed = keypoints[selected][2] !== 0;
+      const next = update(selected, [x, y, placed ? keypoints[selected][2] : 2]);
+      change(next);
+      // Placing a missing point moves on to the next missing one, so a cleared skeleton is
+      // clicked in point by point.
+      if (!placed) {
+        const missing = next.findIndex(([, , v], i) => v === 0 && i > selected);
+        setSelected(missing === -1 ? null : missing);
+      }
     }
+  }
+
+  function clearAll() {
+    change(keypoints.map(([x, y]): Keypoint => [x, y, 0]));
+    setSelected(0);
+    setChosen(null);
   }
 
   function onWheel(event: WheelEvent<SVGSVGElement>) {
@@ -328,6 +342,14 @@ export function Editor({
             </span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={clearAll}
+          onMouseDown={keepFocus}
+          className="col-span-2 rounded-md border border-neutral-700 px-2 py-1.5 text-xs hover:bg-neutral-800"
+        >
+          Skelett löschen und neu setzen (C)
+        </button>
       </div>
 
       <div className="col-span-2 grid grid-cols-5 gap-2">
@@ -363,7 +385,9 @@ export function Editor({
         <p className="mr-auto">
           {selected === null
             ? 'Kein Punkt ausgewählt (Tab oder Punkt anklicken)'
-            : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
+            : keypoints[selected][2] === 0
+              ? `${KEYPOINT_NAMES[selected]}: ins Bild klicken zum Setzen, Tab überspringt`
+              : `${KEYPOINT_NAMES[selected]}: ${VISIBILITY[keypoints[selected][2]]}`}
         </p>
         {LEGEND.map(([color, name, points]) => (
           <span key={name} className="flex items-center gap-1">

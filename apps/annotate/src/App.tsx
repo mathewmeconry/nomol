@@ -29,6 +29,7 @@ const KEYS: [string, string][] = [
   ['P', 'zurück'],
   ['V', 'nächstes verworfenes'],
   ['O', 'Übersicht'],
+  ['C', 'Skelett löschen'],
   ['R', 'Zoom zurück'],
 ];
 
