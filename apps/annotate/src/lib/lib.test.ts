@@ -42,6 +42,27 @@ describe('tasks', () => {
     expect(tasksFileSchema.safeParse(file).success).toBe(true);
   });
 
+  it('offers RTMPose’s more confident view first', () => {
+    function candidate(name: string, score: number) {
+      return { name, keypoints: Array.from({ length: 17 }, () => [1, 2, score]) };
+    }
+    const file = {
+      tasks: [
+        {
+          ...task('a', 'test', 0.1),
+          candidates: [
+            candidate('MediaPipe 90°', 0.9),
+            candidate('RTMPose 0°', 0.4),
+            candidate('MediaPipe 0°', 0.8),
+            candidate('RTMPose 180°', 0.6),
+          ],
+        },
+      ],
+    };
+    const parsed = tasksFileSchema.parse(file).tasks[0].candidates.map((c) => c.name);
+    expect(parsed).toEqual(['RTMPose 180°', 'RTMPose 0°', 'MediaPipe 90°', 'MediaPipe 0°']);
+  });
+
   it('labels the test set first, the most disputed frames first', () => {
     const order = labellingOrder([
       task('train-hard', 'train', 0.9),

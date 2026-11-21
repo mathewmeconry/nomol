@@ -1,7 +1,25 @@
 import { z } from 'zod';
+import { LABELLED } from './keypoints';
 
 const point = z.tuple([z.number(), z.number(), z.number()]);
 const rect = z.tuple([z.number(), z.number(), z.number(), z.number()]);
+const candidate = z.object({ name: z.string(), keypoints: z.array(point).length(17) });
+type Candidate = z.infer<typeof candidate>;
+
+/**
+ * RTMPose's views first, the more confident one first, then the rest as prepare.py ordered them
+ * (best agreeing first). On 468 labelled test frames RTMPose's more confident view hit 95 % of
+ * the points, the best agreeing candidate only 73 %: it was often one of MediaPipe's views.
+ */
+export function candidateOrder(candidates: Candidate[]) {
+  function confidence(c: Candidate) {
+    return LABELLED.reduce((sum, i) => sum + c.keypoints[i][2], 0);
+  }
+  const rtmpose = candidates
+    .filter((c) => c.name.startsWith('RTMPose'))
+    .toSorted((a, b) => confidence(b) - confidence(a));
+  return [...rtmpose, ...candidates.filter((c) => !c.name.startsWith('RTMPose'))];
+}
 
 /** One frame to label, as written by prepare.py. Coordinates are frame pixels. */
 const taskSchema = z.object({
@@ -20,8 +38,8 @@ const taskSchema = z.object({
   appMissed: z.boolean().optional(),
   /** Picked as a moment of an element (prepare.py --elements). */
   element: z.enum(['sideways', 'upside down']).optional(),
-  /** Best agreeing first; keypoints are x, y and the model's score. */
-  candidates: z.array(z.object({ name: z.string(), keypoints: z.array(point).length(17) })),
+  /** In `candidateOrder`; keypoints are x, y and the model's score. */
+  candidates: z.array(candidate).transform(candidateOrder),
 });
 export type Task = z.infer<typeof taskSchema>;
 
