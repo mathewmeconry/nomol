@@ -3,11 +3,16 @@ import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { BONES, KEYPOINT_NAMES, LABELLED, keypointColor } from './lib/keypoints';
 import type { Keypoint } from './lib/tasks';
 
+/** Tailwind's red-500, apart from every limb colour. */
+const UNSURE_COLOR = '#ef4444';
+
 type Props = {
   keypoints: Keypoint[];
   /** Image pixels per screen pixel, so lines and points keep their size when zooming. */
   unit: number;
   selected?: number | null;
+  /** Points the model was unsure of, ringed. */
+  unsure?: Set<number>;
   onGrab?: (index: number, event: PointerEvent) => void;
 };
 
@@ -15,7 +20,7 @@ type Props = {
  * The skeleton in image coordinates, the head as a line from between the shoulders to the nose
  * (as in the app); hidden points dashed, points not in the picture left out.
  */
-export function Skeleton({ keypoints, unit, selected = null, onGrab }: Props) {
+export function Skeleton({ keypoints, unit, selected = null, unsure, onGrab }: Props) {
   const [nose, left, right] = [keypoints[0], keypoints[5], keypoints[6]];
   const neck =
     nose[2] && left[2] && right[2] ? [(left[0] + right[0]) / 2, (left[1] + right[1]) / 2] : null;
@@ -51,6 +56,18 @@ export function Skeleton({ keypoints, unit, selected = null, onGrab }: Props) {
           />
         );
       })}
+      {[...(unsure ?? [])].map((i) => (
+        <circle
+          key={`unsure-${i}`}
+          cx={keypoints[i][0]}
+          cy={keypoints[i][1]}
+          r={13 * unit}
+          fill="none"
+          stroke={UNSURE_COLOR}
+          strokeWidth={2.5 * unit}
+          pointerEvents="none"
+        />
+      ))}
       {keypoints.map(([x, y, v], i) =>
         v === 0 || !LABELLED.includes(i) ? null : (
           <circle

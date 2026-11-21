@@ -1,6 +1,6 @@
 import { LM } from '../detection/pose';
 import { makePose } from '../tests/poses';
-import { LIMB_COLORS, skeletonLines } from './lines';
+import { LIMB_COLORS, skeletonLines, skeletonPoints } from './lines';
 
 describe('skeletonLines', () => {
   it('draws body, limbs and the head (shoulders to nose) of a fully visible pose', () => {
@@ -17,5 +17,17 @@ describe('skeletonLines', () => {
     const lines = skeletonLines(pose);
     // Both left leg bones and the head line go.
     expect(lines).toHaveLength(10);
+  });
+});
+
+describe('skeletonPoints', () => {
+  it('keeps a visible point whose neighbours are hidden, leaving out only hidden ones', () => {
+    const pose = makePose({ x: 0.5, feetY: 0.9 });
+    pose[LM.leftElbow] = { ...pose[LM.leftElbow], visibility: 0.2 };
+    const points = skeletonPoints(pose);
+    expect(points).toHaveLength(12);
+    expect(points.map(([p]) => p)).toContain(pose[LM.leftWrist]);
+    expect(points.map(([p]) => p)).not.toContain(pose[LM.leftElbow]);
+    expect(skeletonLines(pose).filter(([, , c]) => c === LIMB_COLORS.leftArm)).toHaveLength(0);
   });
 });

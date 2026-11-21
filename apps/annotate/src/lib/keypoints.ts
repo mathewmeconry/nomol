@@ -94,6 +94,25 @@ export function keypointColor(index: number) {
   return left ? LIMB_COLORS.leftLeg : LIMB_COLORS.rightLeg;
 }
 
+/** Below this score a candidate's point is right only about half the time (test labels). */
+const UNSURE_SCORE = 0.5;
+
+/**
+ * The points still where `candidate` put them with a score below `UNSURE_SCORE`, to check
+ * first: above 0.7 RTMPose's points were right in 98 % of the test labels. Also after swapping
+ * sides, which only exchanges the points; moved, hidden or set anew, a point counts as checked.
+ */
+export function unsurePoints(keypoints: Keypoint[], candidate: [number, number, number][]) {
+  const unsure = new Set<number>();
+  for (const i of LABELLED) {
+    const [x, y, v] = keypoints[i];
+    if (v === 2 && candidate.some(([cx, cy, s]) => cx === x && cy === y && s < UNSURE_SCORE)) {
+      unsure.add(i);
+    }
+  }
+  return unsure;
+}
+
 /**
  * A candidate as a starting point: every point visible unless it lies outside the frame. Hidden
  * points are for the person labelling to judge; the models' scores don't tell.

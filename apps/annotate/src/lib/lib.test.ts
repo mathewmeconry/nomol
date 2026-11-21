@@ -1,5 +1,5 @@
 import { toCoco } from './coco';
-import { fromCandidate, swapSides } from './keypoints';
+import { fromCandidate, swapSides, unsurePoints } from './keypoints';
 import {
   afterSave,
   firstOpen,
@@ -123,6 +123,18 @@ describe('keypoints', () => {
     const swapped = swapSides(points).map(([x]) => x);
     expect(swapped.slice(0, 7)).toEqual([0, 2, 1, 4, 3, 6, 5]);
     expect(swapSides(swapSides(points))).toEqual(points);
+  });
+
+  it('marks the points left where the candidate was unsure, also after swapping sides', () => {
+    const candidate = Array.from({ length: 17 }, (_, i): [number, number, number] => [i, 0, 0.9]);
+    candidate[7] = [7, 0, 0.3]; // left elbow
+    candidate[9] = [9, 0, 0.4]; // left wrist
+    const points = fromCandidate(candidate, 100, 80);
+    expect([...unsurePoints(points, candidate)]).toEqual([7, 9]);
+    expect([...unsurePoints(swapSides(points), candidate)]).toEqual([8, 10]);
+    points[7] = [20, 5, 2]; // moved
+    points[9] = [9, 0, 1]; // hidden
+    expect(unsurePoints(points, candidate).size).toBe(0);
   });
 
   it('starts from a candidate, points outside the frame as not in the picture', () => {

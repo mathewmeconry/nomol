@@ -11,7 +11,7 @@ type Candidate = z.infer<typeof candidate>;
  * (best agreeing first). On 468 labelled test frames RTMPose's more confident view hit 95 % of
  * the points, the best agreeing candidate only 73 %: it was often one of MediaPipe's views.
  */
-export function candidateOrder(candidates: Candidate[]) {
+function candidateOrder(candidates: Candidate[]) {
   function confidence(c: Candidate) {
     return LABELLED.reduce((sum, i) => sum + c.keypoints[i][2], 0);
   }

@@ -1,5 +1,5 @@
 import type { Point, Pose } from '@nomol/core/detection/pose';
-import { skeletonLines } from '@nomol/core/skeleton/lines';
+import { skeletonLines, skeletonPoints } from '@nomol/core/skeleton/lines';
 import { StyleSheet, View } from 'react-native';
 
 const LINE = 3.5;
@@ -56,17 +56,15 @@ export default function SkeletonOverlay({
       {lines.map(([a, b, color], i) => (
         <Line key={`l${i}`} a={a} b={b} width={LINE} color={color} />
       ))}
-      {lines.flatMap(([a, b, color], i) =>
-        [a, b].map((p, j) => (
-          <View
-            key={`d${i}-${j}`}
-            style={[
-              styles.dot,
-              { left: p.x - DOT / 2, top: p.y - DOT / 2, backgroundColor: color },
-            ]}
-          />
-        )),
-      )}
+      {skeletonPoints(pose).map(([p, color], i) => (
+        <View
+          key={`d${i}`}
+          style={[
+            styles.dot,
+            { left: p.x * width - DOT / 2, top: p.y * height - DOT / 2, backgroundColor: color },
+          ]}
+        />
+      ))}
     </View>
   );
 }

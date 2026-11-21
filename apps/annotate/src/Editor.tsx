@@ -9,7 +9,14 @@ import {
 import { cn } from 'cn';
 import { LIMB_COLORS } from '@nomol/core/skeleton/lines';
 import { Skeleton } from './Skeleton';
-import { KEYPOINT_NAMES, LABELLED, fromCandidate, nextLabelled, swapSides } from './lib/keypoints';
+import {
+  KEYPOINT_NAMES,
+  LABELLED,
+  fromCandidate,
+  nextLabelled,
+  swapSides,
+  unsurePoints,
+} from './lib/keypoints';
 import type { Keypoint, Label, Task } from './lib/tasks';
 
 type Props = {
@@ -119,6 +126,10 @@ export function Editor({
 
   // The SVG fits the view into itself (meet), so the tighter side sets the scale.
   const unit = Math.max(view.w / size.width, view.h / size.height);
+  const unsure =
+    chosen === null
+      ? new Set<number>()
+      : unsurePoints(keypoints, task.candidates[chosen].keypoints);
 
   function change(next: Keypoint[]) {
     setHistory((h) => [...h, keypoints]);
@@ -308,7 +319,13 @@ export function Editor({
           strokeWidth={unit}
           strokeDasharray={`${4 * unit} ${4 * unit}`}
         />
-        <Skeleton keypoints={keypoints} unit={unit} selected={selected} onGrab={grab} />
+        <Skeleton
+          keypoints={keypoints}
+          unit={unit}
+          selected={selected}
+          unsure={unsure}
+          onGrab={grab}
+        />
       </svg>
 
       <div className="grid min-h-0 grid-cols-2 content-start gap-2 overflow-y-auto">
@@ -406,6 +423,7 @@ export function Editor({
                     'rounded border px-1.5 text-xs text-neutral-200 hover:bg-neutral-800',
                     v === 1 ? 'border-dashed border-neutral-400' : 'border-transparent',
                     v === 0 && 'text-neutral-500 line-through',
+                    unsure.has(index) && 'border-red-500',
                     index === selected && 'bg-sky-900',
                   )}
                 >
@@ -416,7 +434,8 @@ export function Editor({
           </span>
         ))}
         <span className="text-neutral-500">
-          gestrichelt = verdeckt · Seiten aus Sicht der Person
+          gestrichelt = verdeckt · <span className="text-red-400">rot umrandet</span> = Modell
+          unsicher, zuerst prüfen · Seiten aus Sicht der Person
         </span>
       </div>
     </div>

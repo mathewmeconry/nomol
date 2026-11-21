@@ -66,7 +66,8 @@ Requirements, as agreed with the owner:
   replay fills the screen with its controls over it (they fade during playback) and the small
   live picture over it, where it can be dragged anywhere; a tap on it goes live. A tap on the replay
   shows or hides the controls (Android so far). The timeline marks the looped routine. Speeds ¼× / ½× (default) / 1×, frame steps (1 and 5), pinch zoom (double tap resets), skeleton overlay (off until switched on; not reliable enough yet), the head as a line from
-  between the shoulders to the nose (no face details); left side
+  between the shoulders to the nose (no face details), each point below MediaPipe's visibility
+  0.5 left out on its own (`skeletonPoints`: a visible wrist stays when its elbow is hidden); left side
   warm, right side cool, arms lighter than legs. A beep sounds when a recording starts (unless switched off) and the camera's light blinks
   for 0.5 s (where it has one: not front cameras, not on iPhone). The replay
   skeleton is computed after the recording (MediaPipe on turned frames, see Stack) with a progress
@@ -531,6 +532,15 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   started from these candidates, so they are favoured; on the 47 frames where the label differs
   from every candidate RTMPose-x still hit 81 %, MediaPipe 46 %. Only frames where YOLOX found
   someone are in the set, and 13 of them are upside down, too few to judge those.
+- Smaller models against 469 test labels (laptop CPU, onnxruntime; frames chosen where YOLOX-m
+  found someone, which favours it). Pose models on the YOLOX-m box, more confident of upright
+  and 180°, points hit / found: RTMPose-x 95 % / 99 % (88 ms per view), -l 93 % (25 ms), -m 92 %
+  (15 ms), -s 88 % (7 ms), -t 85 % (6 ms); upside down (30 frames) -m 87 %. RTMPose-m on the
+  640 px still did as well as on the full frame, so the stills aren't what loses the gymnast.
+  The detector is: with RTMPose-m behind it, YOLOX-m missed the labelled person in 19 frames
+  (350 ms), -s in 50 (161 ms), -tiny in 105 (51 ms), -nano in 175 (18 ms). The replay skeleton
+  already knows where the gymnast is from the live tracking, so a detector is needed only where
+  that is lost.
 - Floor and Sprung, Android, November 20 2026 (122 clips on the phone, 64 at Sprung, ~30 on the
   floor track with a zone at each end; failed signs and missed triggers leave no clip, so they
   were found through button starts and long clips). Floor: in button-started clips a girl was
@@ -608,7 +618,9 @@ It only runs locally and is never deployed: the frames show people, so the work 
   the skeleton; each click then places the selected point and moves on to the next missing one
   (H then hides the point just placed), for frames where every candidate is wrong. RTMPose's
   more confident view is offered first (1): on the test labels it hit 95 % of the points, the
-  best agreeing candidate 73 %. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
+  best agreeing candidate 73 %. Points the chosen candidate scored below 0.5 are ringed red
+  until moved, hidden or set anew: on the test labels RTMPose's points under 0.5 were right
+  about half the time (and half were hidden), from 0.7 in 98 %. Choosing a candidate (1–9) or swapping sides (S) fixes most frames in one key; single
   points are dragged, or selected (Tab) and placed with a click. Hidden points (H) are COCO's
   visibility 1, points not in the picture (Del) 0. "COCO exportieren" writes `coco_test.json` and
   `coco_train.json` with the labelled person per frame (fine for top-down models trained on

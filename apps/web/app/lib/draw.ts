@@ -1,6 +1,6 @@
 import { boundingBox, type Pose } from '@nomol/core/detection/pose';
 import type { Zone } from '@nomol/core/detection/zone';
-import { skeletonLines } from '@nomol/core/skeleton/lines';
+import { skeletonLines, skeletonPoints } from '@nomol/core/skeleton/lines';
 import { startFigure } from '@nomol/core/start-figure';
 
 /**
@@ -39,13 +39,11 @@ export function drawSkeleton(ctx: CanvasRenderingContext2D, pose: Pose, w: numbe
       ctx.stroke();
     }
   }
-  for (const [a, b, color] of lines) {
-    for (const p of [a, b]) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  for (const [p, color] of skeletonPoints(pose)) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

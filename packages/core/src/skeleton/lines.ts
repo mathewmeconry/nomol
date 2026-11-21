@@ -47,3 +47,30 @@ export function skeletonLines(pose: Pose): [Point, Point, string][] {
   }
   return lines;
 }
+
+const POINT_LIMBS: [number, Limb][] = [
+  [LM.nose, 'body'],
+  [LM.leftShoulder, 'leftArm'],
+  [LM.leftElbow, 'leftArm'],
+  [LM.leftWrist, 'leftArm'],
+  [LM.rightShoulder, 'rightArm'],
+  [LM.rightElbow, 'rightArm'],
+  [LM.rightWrist, 'rightArm'],
+  [LM.leftHip, 'leftLeg'],
+  [LM.leftKnee, 'leftLeg'],
+  [LM.leftAnkle, 'leftLeg'],
+  [LM.rightHip, 'rightLeg'],
+  [LM.rightKnee, 'rightLeg'],
+  [LM.rightAnkle, 'rightLeg'],
+];
+
+/**
+ * The skeleton's dots: every visible point, also one whose neighbours are hidden (a wrist next
+ * to an elbow MediaPipe can't see). Only points below its visibility threshold are left out.
+ */
+export function skeletonPoints(pose: Pose): [Point, string][] {
+  return POINT_LIMBS.filter(([i]) => isVisible(pose, i)).map(([i, limb]) => [
+    pose[i],
+    LIMB_COLORS[limb],
+  ]);
+}
