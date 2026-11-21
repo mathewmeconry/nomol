@@ -13,9 +13,9 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.margelo.nitro.core.Promise
 
 /**
- * MediaPipe heavy in IMAGE mode on saved stills, for the replay skeleton: cuts a turned square out
- * of a still, like the web app's skeleton worker draws it on a canvas. Runs on Nitro's background
- * threads; which views to try is decided in core.
+ * MediaPipe heavy in IMAGE mode or RTMPose-m on saved stills, for the replay skeleton: cuts a
+ * turned square out of a still, like the web app's skeleton worker draws it on a canvas. Runs on
+ * Nitro's background threads; which views to try is decided in core.
  */
 @Keep
 @DoNotStrip
@@ -23,16 +23,19 @@ class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
   /** Calls come one after the other from JS, but on whichever background thread is free. */
   private val lock = Any()
   private var landmarker: Landmarker? = null
+  private var rtmPose: RtmPose? = null
   private var still: Bitmap? = null
   private val view = Bitmap.createBitmap(VIEW_SIZE, VIEW_SIZE, Bitmap.Config.ARGB_8888)
   private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
 
-  override fun load(): Promise<Unit> =
+  override fun load(model: SkeletonModel): Promise<Unit> =
     Promise.async {
-      val created = Landmarker("heavy", RunningMode.IMAGE)
+      val createdLandmarker = if (model == SkeletonModel.MEDIAPIPE) Landmarker("heavy", RunningMode.IMAGE) else null
+      val createdRtmPose = if (model == SkeletonModel.RTMPOSE) RtmPose() else null
       synchronized(lock) {
-        landmarker?.close()
-        landmarker = created
+        closeModels()
+        landmarker = createdLandmarker
+        rtmPose = createdRtmPose
       }
     }
 
@@ -54,8 +57,9 @@ class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
   ): Promise<DoubleArray> =
     Promise.async {
       synchronized(lock) {
-        val landmarker = landmarker ?: throw Error("Model not loaded")
         val still = still ?: throw Error("No still open")
+        rtmPose?.let { return@async it.detect(still, centerX, centerY, size, angle) }
+        val landmarker = landmarker ?: throw Error("Model not loaded")
         val scale = (VIEW_SIZE / size).toFloat()
         // Same transform as the web worker's canvas: the still turned by -angle around the
         // view's centre, scaled so the view fills VIEW_SIZE; black outside the still.
@@ -76,11 +80,17 @@ class HybridSkeletonLandmarker : HybridSkeletonLandmarkerSpec() {
   override fun dispose() {
     super.dispose()
     synchronized(lock) {
-      landmarker?.close()
-      landmarker = null
+      closeModels()
       still?.recycle()
       still = null
     }
+  }
+
+  private fun closeModels() {
+    landmarker?.close()
+    landmarker = null
+    rtmPose?.close()
+    rtmPose = null
   }
 
   companion object {

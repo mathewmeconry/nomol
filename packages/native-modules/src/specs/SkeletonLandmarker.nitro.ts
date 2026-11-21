@@ -6,14 +6,21 @@ export interface StillSize {
 }
 
 /**
- * MediaPipe Pose Landmarker (heavy, IMAGE mode) on the stills saved while recording, for the
- * replay skeleton. Which views to look at and what the poses mean is decided in core
- * (`createTracker` in `skeleton/rotation.ts`); this only cuts out a view and detects in it, off
- * the JS thread.
+ * `mediapipe`: Pose Landmarker heavy in IMAGE mode, its own person detector finding anyone in the
+ * view. `rtmpose`: RTMPose-m (ONNX Runtime), no detector: always the one person the view is
+ * centred on, so it needs the live tracking's position but doesn't miss someone MediaPipe's
+ * detector can't see (upside down, arms above the head).
+ */
+export type SkeletonModel = 'mediapipe' | 'rtmpose';
+
+/**
+ * A pose model on the stills saved while recording, for the replay skeleton. Which views to look
+ * at and what the poses mean is decided in core (`createTracker` in `skeleton/rotation.ts`);
+ * this only cuts out a view and detects in it, off the JS thread.
  */
 export interface SkeletonLandmarker extends HybridObject<{ android: 'kotlin' }> {
-  /** Loads the heavy model; call once before `detect`. */
-  load(): Promise<void>;
+  /** Loads the model; call once before `detect`. */
+  load(model: SkeletonModel): Promise<void>;
   /** Decodes a still (JPEG) for the following `detect` calls. */
   open(path: string): Promise<StillSize>;
   /**

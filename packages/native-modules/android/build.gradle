@@ -42,6 +42,19 @@ def downloadPoseModels = tasks.register("downloadPoseModels") {
       new URL(url).withInputStream { input -> part.withOutputStream { it << input } }
       part.renameTo(model)
     }
+    // RTMPose-m for the replay skeleton, as OpenMMLab publishes it: a zip with the ONNX model.
+    def rtmpose = new File(modelsDir, "rtmpose_m.onnx")
+    if (!rtmpose.exists()) {
+      modelsDir.mkdirs()
+      def zip = new File(modelsDir, "rtmpose_m.zip.part")
+      def url = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7_420e-256x192-e48f03d0_20230504.zip"
+      new URL(url).withInputStream { input -> zip.withOutputStream { it << input } }
+      def onnx = project.zipTree(zip).matching { include "**/*.onnx" }.singleFile
+      def part = new File(modelsDir, "${rtmpose.name}.part")
+      part.bytes = onnx.bytes
+      part.renameTo(rtmpose)
+      zip.delete()
+    }
   }
 }
 tasks.configureEach { task ->
@@ -117,6 +130,7 @@ dependencies {
   implementation "com.facebook.react:react-native:+"
   implementation "androidx.camera:camera-core:1.7.0-alpha03" // VisionCamera's version
   implementation "com.google.mediapipe:tasks-vision:1.2.3"
+  implementation "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"
   implementation project(":react-native-nitro-modules")
   implementation project(":react-native-vision-camera")
   testImplementation "junit:junit:4.13.2"

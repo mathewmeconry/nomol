@@ -5,9 +5,13 @@ import { createTracker, posesFromView, skeletonPasses } from '@nomol/core/skelet
 import {
   createSkeletonLandmarker,
   type SkeletonLandmarker,
+  type SkeletonModel,
   type StillSize,
 } from '@nomol/native-modules';
 import { finishSkeleton, loadPendingSkeleton, saveSkeleton } from './clip-store';
+
+/** See `SkeletonModel`. */
+const MODEL: SkeletonModel = 'rtmpose';
 
 /** How often the skeleton computed so far is stored, so little is lost when the app closes. */
 const SAVE_EVERY_MS = 3000;
@@ -27,8 +31,8 @@ export type SkeletonJob = {
 
 /**
  * Computes the replay skeleton from the frames saved while recording, one clip after the other,
- * as the web app does (`skeleton/rotation.ts` in core): MediaPipe heavy in native code on views
- * turned so the gymnast appears upright. The JS thread only decides which views to look at.
+ * as the web app does (`skeleton/rotation.ts` in core): a pose model (`MODEL`) in native code on
+ * views turned so the gymnast appears upright. The JS thread only decides which views to look at.
  * Stored as it goes; after a restart the done frames are fed back to the tracker instead of
  * being detected again, which puts it where it was.
  */
@@ -41,7 +45,7 @@ export function createSkeletonRefiner() {
 
   async function load() {
     const created = createSkeletonLandmarker();
-    await created.load();
+    await created.load(MODEL);
     return created;
   }
 

@@ -7,7 +7,11 @@ import type { StartSound } from './specs/StartSound.nitro';
 
 export type { ClipRecorder } from './specs/ClipRecorder.nitro';
 export type { Detection, Model } from './specs/PoseLandmarker.nitro';
-export type { SkeletonLandmarker, StillSize } from './specs/SkeletonLandmarker.nitro';
+export type {
+  SkeletonLandmarker,
+  SkeletonModel,
+  StillSize,
+} from './specs/SkeletonLandmarker.nitro';
 
 export function createPoseLandmarker(): PoseLandmarker {
   return NitroModules.createHybridObject<PoseLandmarker>('PoseLandmarker');

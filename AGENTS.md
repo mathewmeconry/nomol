@@ -222,10 +222,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   app) and their poses and stills join the clip, so the run-up gets a skeleton too.
 - Android replay skeleton (`src/lib/skeleton.ts`): the web's pipeline with the same core logic
   (`createTracker`, `skeletonPasses`, `posesFromView`), one clip after the other, paused while
-  recording. Kotlin (`HybridSkeletonLandmarker`, a second landmarker on the bundled heavy model,
-  IMAGE mode, GPU with CPU fallback) is only a primitive: `open(still)` decodes a still, and
-  `detect(centre, size, angle)` cuts the turned 512 px view out of it (the web worker's canvas
-  transform as an Android `Matrix`) and returns landmarks normalized to the view, on Nitro's
+  recording. Kotlin (`HybridSkeletonLandmarker`) is only a primitive: `open(still)` decodes a
+  still, and `detect(centre, size, angle)` cuts the turned view out of it (the web worker's
+  canvas transform as an Android `Matrix`) and returns landmarks normalized to the view, on Nitro's
   background threads (`Promise.async`). Since those answer asynchronously, core's tracker takes
   a detector returning a promise. The JS thread only picks views. Progress is stored every 3 s:
   the skeleton into the clip's `.nomol.txt` (written beside it and moved over it, so a closed
@@ -233,7 +232,12 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   next start it continues there; the done stills' stored results are fed back to the tracker
   instead of being detected again, which restores its state exactly (tested in core). Once
   complete, `stills/`, `samples.json` and `skeleton-done.json` are deleted (the thumbnail
-  stays): the web app keeps its frames only in memory, so nothing needs them afterwards.
+  stays): the web app keeps its frames only in memory, so nothing needs them afterwards. The
+  model is chosen in `skeleton.ts` (`SkeletonModel`): RTMPose-m (`RtmPose.kt`, ONNX Runtime on
+  4 CPU threads, the OpenMMLab ONNX downloaded and bundled like MediaPipe's models, +69 MB APK)
+  on the view's full height and middle three quarters, preprocessed and decoded as rtmlib does;
+  or MediaPipe heavy (IMAGE mode, GPU with CPU fallback) on a 512 px view. RTMPose has no person
+  detector: it draws whoever the view is centred on (see Detection notes).
 - Android clips (`src/lib/clip-store.ts`): one folder per clip in the app's documents
   (`clips/<start ms>/`): `<export name>.mp4`, `<export name>.nomol.txt` (core's `exportData`,
   read back with `parseExport`), `thumbnail.jpg`, `stills/*.jpg` + `samples.json` (+
@@ -246,7 +250,9 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
   `FileShare` (`ACTION_SEND_MULTIPLE` with expo-file-system's content URIs; Expo's and React
   Native's share take one file). Replay (`ClipPlayer.tsx`): expo-video (ExoPlayer, exact seeks,
   `playbackRate`, scrubbing mode while dragging the timeline, a `textureView` so it can sit
-  under the live picture), looping `routineRange` through `timeUpdate` events; zoom resizes the
+  under the live picture), looping `routineRange` through `timeUpdate` events; the skeleton
+  reads `currentTime` on every animation frame instead (the events reached the busy JS thread
+  a median 83 ms of video late at ½×, and the skeleton trailed visibly); zoom resizes the
   video view instead of transforming it so the skeleton's lines stay thin. Gestures use React
   Native's responder props (the React Compiler lint refuses `PanResponder` built during
   render).
@@ -351,7 +357,8 @@ UI language is German (Swiss spelling: "ss", never "ß"). Use the informal "du".
 
 `packages/native-modules/` (Android only): Nitro specs in `src/specs/`, Kotlin in
 `android/src/main/java/com/margelo/nitro/nomol/` (`HybridPoseLandmarker.kt` also saves stills,
-`HybridSkeletonLandmarker.kt` the replay skeleton's views, `Landmarkers.kt` model loading
+`HybridSkeletonLandmarker.kt` the replay skeleton's views, `RtmPose.kt` RTMPose-m on one,
+`Landmarkers.kt` model loading
 shared by both, `HybridClipRecorder.kt`, `SampleBuffer.kt` and `CameraClock.kt` the recording,
 `HybridStartSound.kt` (its `ToneGenerator` created on the first beep; a failure only costs the beep),
 `HybridFileShare.kt`), JVM unit tests in `android/src/test/`, model download in
@@ -541,6 +548,15 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   (350 ms), -s in 50 (161 ms), -tiny in 105 (51 ms), -nano in 175 (18 ms). The replay skeleton
   already knows where the gymnast is from the live tracking, so a detector is needed only where
   that is lost.
+- RTMPose-m in the Android replay skeleton, Pixel 8, November 21 2026 (the test clips' stills
+  pushed to the phone and run through the app's pipeline): one run 60–99 ms on 4 CPU threads
+  (XNNPACK 56–83, NNAPI 72–139, 1 thread 92–98), ~120 ms per still with 1.6 views on a cool
+  phone. After ~50 minutes of it with the camera on the phone was at thermal status critical
+  (73 °C) and runs took 0.5–1 s. On 437 labelled frames of 28 clips it hit 62 % of the points
+  (skeleton found 77 %; with a live pose at that still 70 % / 87 %, without 39 % / 51 %), the
+  recorded MediaPipe replay skeleton 22 % / 28 %. On the laptop the same model hit 92 % on the
+  detector's box: the tracker's views lose the rest. Its poses were reproduced on the laptop
+  (median 0.0008 image heights apart), so view choices can be tried there.
 - Floor and Sprung, Android, November 20 2026 (122 clips on the phone, 64 at Sprung, ~30 on the
   floor track with a zone at each end; failed signs and missed triggers leave no clip, so they
   were found through button starts and long clips). Floor: in button-started clips a girl was

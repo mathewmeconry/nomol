@@ -67,9 +67,11 @@ private fun createLandmarker(
 
 /** Read into memory: MediaPipe can't open compressed assets by path. */
 private fun readAsset(name: String): ByteBuffer {
-  val bytes = context().assets.open(name).use { it.readBytes() }
+  val bytes = readAssetBytes(name)
   return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).put(bytes).apply { rewind() }
 }
+
+internal fun readAssetBytes(name: String) = context().assets.open(name).use { it.readBytes() }
 
 private fun context() = NitroModules.applicationContext ?: throw Error("No application context")
 
