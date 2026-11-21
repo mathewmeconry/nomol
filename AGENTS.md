@@ -556,7 +556,14 @@ The thresholds were tuned on a single demo video. Real gym data will likely need
   (skeleton found 77 %; with a live pose at that still 70 % / 87 %, without 39 % / 51 %), the
   recorded MediaPipe replay skeleton 22 % / 28 %. On the laptop the same model hit 92 % on the
   detector's box: the tracker's views lose the rest. Its poses were reproduced on the laptop
-  (median 0.0008 image heights apart), so view choices can be tried there.
+  (median 0.0008 image heights apart), so view choices can be tried there. On all 818 labelled
+  test frames of 53 clips it hit 55 % / 74 %; both ways round at the predicted angle taking the
+  more confident, and YOLOX-s to re-find the gymnast without a live pose, changed nothing. On
+  the labelled person (68 % of frames) it hit 77 % at the app's 0.5 visibility; 18 % were on
+  someone else, nearly always where the live tracking was (the labelled person is the largest
+  or the one near the app's last sighting, not always the gymnast the app recorded); 11 % had
+  no pose, mostly without a live pose to centre on. So the views follow the live tracking well;
+  its own mistakes and RTMPose's scores below 0.5 are what remain.
 - Floor and Sprung, Android, November 20 2026 (122 clips on the phone, 64 at Sprung, ~30 on the
   floor track with a zone at each end; failed signs and missed triggers leave no clip, so they
   were found through button starts and long clips). Floor: in button-started clips a girl was
