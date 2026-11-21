@@ -86,6 +86,41 @@ function fingers(points: Point[]) {
   };
 }
 
+/**
+ * The skeleton for the frame on screen. Drawn at the time of expo-video's `timeUpdate` events it
+ * trailed the picture: on a Pixel 8 they reached the JS thread (which also runs live detection)
+ * a median 83 ms of video late at ½×, sometimes seconds. Reading `currentTime` takes ~0.2 ms, so
+ * while playing it is read on every animation frame, as the web app does.
+ */
+function SyncedSkeleton({
+  clip,
+  player,
+  timeMs,
+  playing,
+  width,
+  height,
+}: {
+  clip: Clip;
+  player: VideoPlayer;
+  /** Where a seek or the last time update put it, while paused. */
+  timeMs: number;
+  playing: boolean;
+  width: number;
+  height: number;
+}) {
+  const [playingMs, setPlayingMs] = useState(timeMs);
+  useEffect(() => {
+    if (!playing) return;
+    let frame = requestAnimationFrame(function tick() {
+      setPlayingMs(player.currentTime * 1000);
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [player, playing]);
+  const pose = poseAt(clip.skeleton, playing ? playingMs : timeMs);
+  return pose && <SkeletonOverlay pose={pose} width={width} height={height} />;
+}
+
 type Props = {
   clip: Clip;
   /** While the skeleton is being computed; frames without one show no skeleton yet. */
@@ -256,7 +291,6 @@ export default function ClipPlayer({
     }
   }
 
-  const pose = skeleton ? poseAt(clip.skeleton, timeMs) : null;
   const zoomed = {
     left: zoom.x,
     top: zoom.y,
@@ -296,7 +330,16 @@ export default function ClipPlayer({
             contentFit="fill"
             surfaceType="textureView"
           />
-          {pose && <SkeletonOverlay pose={pose} width={zoomed.width} height={zoomed.height} />}
+          {skeleton && (
+            <SyncedSkeleton
+              clip={clip}
+              player={player}
+              timeMs={timeMs}
+              playing={isPlaying}
+              width={zoomed.width}
+              height={zoomed.height}
+            />
+          )}
         </View>
       </View>
 
